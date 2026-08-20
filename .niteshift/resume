@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Kernel limits and host aliases do not survive a sandbox suspend, but the dev
+# stack requires them after every resume.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
+
+sysctl -w fs.inotify.max_user_watches=1048576 >/dev/null
+sysctl -w fs.inotify.max_user_instances=8192 >/dev/null
+
+if ! grep -qE '^127\.0\.0\.1[[:space:]]+db[[:space:]]' /etc/hosts; then
+    echo '127.0.0.1 db redis7 kafka clickhouse clickhouse-coordinator objectstorage seaweedfs temporal' >> /etc/hosts
+fi
+
+# The infra service starts as soon as resume returns, so give the daemon a
+# bounded chance to become available first.
+for _ in $(seq 1 60); do
+    docker info >/dev/null 2>&1 && break
+    sleep 2
+done
+docker info >/dev/null 2>&1 || echo "docker daemon is not responding; the infra service will retry"

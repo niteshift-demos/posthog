@@ -1,0 +1,48 @@
+services:
+    # The infra service owns every container so Niteshift can stop the complete
+    # container stack through one foreground process.
+    - name: infra
+      command: |
+          exec docker compose -p posthog \
+              -f docker-compose.dev.yml \
+              -f docker-compose.profiles.yml \
+              -f docker-compose.niteshift.yml \
+              up --remove-orphans
+      port: 8011
+      stopGracePeriod: 60s
+
+    # phrocs has no foreground mode because its TUI requires a TTY and consumes
+    # excessive memory under a pseudo-TTY. Start it detached, keep the service
+    # open for its lifetime, and stop it during shutdown.
+    - name: dev-stack
+      command: |
+          set -euo pipefail
+          export PATH="/opt/node/bin:$PATH"
+          source .venv/bin/activate
+
+          # The browser reaches the app through the preview URL, so Django must
+          # accept that URL as a POST origin.
+          export EXTRA_CSRF_TRUSTED_ORIGINS="${NITESHIFT_PORT_8011_URL:-http://localhost:8011}"
+
+          # The infra service owns the containers, so wait for them instead of
+          # starting a second container stack.
+          POSTHOG_SANDBOX= bin/wait-for-docker
+
+          trap 'phrocs stop >/dev/null 2>&1 || true; exit 0' TERM INT
+
+          ./bin/start -d
+          phrocs wait --timeout 900 || true
+
+          while pgrep -x phrocs >/dev/null 2>&1; do sleep 5 & wait $!; done
+      stopGracePeriod: 60s
+      environment:
+          # The infra service already owns the infrastructure containers.
+          - name: POSTHOG_SANDBOX
+            value: '1'
+          # External browsers cannot reach Vite on localhost:8234, so serve its
+          # modules through the page's preview origin.
+          - name: JS_URL
+            value: ''
+          # Sandbox runs must not count as developer activity.
+          - name: POSTHOG_TELEMETRY_OPT_OUT
+            value: '1'
