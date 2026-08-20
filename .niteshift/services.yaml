@@ -1,13 +1,48 @@
 services:
-    # Postgres, Redis, Kafka, ClickHouse, object storage and personhog, the subset of the dev compose
-    # stack the web app needs. Temporal, the other Rust services and Node ingestion are left out.
-    - name: infra
+    # The subset of the dev compose stack the web app needs, one supervised unit per lifecycle
+    # group so each can restart alone. Temporal, the other Rust services and Node ingestion are
+    # left out. --no-deps keeps a unit from starting (and later stopping) containers another
+    # unit owns: clickhouse declares kafka/zookeeper, personhog-replica declares db.
+    - name: db
       command: |
-          export POSTHOG_PERSONS_DB_NAME=posthog
           exec docker compose -p posthog -f docker-compose.dev.yml -f docker-compose.niteshift.yml \
-              up db redis7 zookeeper kafka kafka-init clickhouse objectstorage \
-              personhog-replica personhog-router
-      stopGracePeriod: 90s
+              up db
+      stopGracePeriod: 30s
+
+    - name: redis
+      command: |
+          exec docker compose -p posthog -f docker-compose.dev.yml -f docker-compose.niteshift.yml \
+              up redis7
+      stopGracePeriod: 20s
+
+    # kafka-init pre-creates topics and exits; it re-runs (idempotently) on every unit restart.
+    - name: kafka
+      command: |
+          exec docker compose -p posthog -f docker-compose.dev.yml -f docker-compose.niteshift.yml \
+              up zookeeper kafka kafka-init
+      stopGracePeriod: 30s
+
+    - name: clickhouse
+      command: |
+          exec docker compose -p posthog -f docker-compose.dev.yml -f docker-compose.niteshift.yml \
+              up --no-deps clickhouse
+      stopGracePeriod: 30s
+
+    - name: objectstorage
+      command: |
+          exec docker compose -p posthog -f docker-compose.dev.yml -f docker-compose.niteshift.yml \
+              up objectstorage
+      stopGracePeriod: 20s
+
+    - name: personhog
+      command: |
+          exec docker compose -p posthog -f docker-compose.dev.yml -f docker-compose.niteshift.yml \
+              up --no-deps personhog-replica personhog-router
+      stopGracePeriod: 20s
+      environment:
+          # Points the replica at the main database, matching the seeded persons.
+          - name: POSTHOG_PERSONS_DB_NAME
+            value: posthog
 
     - name: backend
       command: |

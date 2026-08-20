@@ -69,7 +69,7 @@ YAML
 grep -qxF docker-compose.niteshift.yml .git/info/exclude || echo docker-compose.niteshift.yml >>.git/info/exclude
 
 echo "→ Starting the infrastructure"
-ns services start infra
+ns services start db redis kafka clickhouse objectstorage personhog
 bin/wait-for-docker objectstorage
 echo "→ Waiting for personhog"
 timeout 120 bash -c 'until (exec 3<>/dev/tcp/127.0.0.1/50052) 2>/dev/null; do sleep 1; done'
