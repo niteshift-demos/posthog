@@ -1,48 +1,81 @@
 services:
-    # The infra service owns every container so Niteshift can stop the complete
-    # container stack through one foreground process.
+    # Postgres, Redis, Kafka, ClickHouse and object storage, the subset of the dev compose stack
+    # the web app needs. Temporal, the Rust services and the Node ingestion consumers are left out.
     - name: infra
       command: |
-          exec docker compose -p posthog \
-              -f docker-compose.dev.yml \
-              -f docker-compose.profiles.yml \
-              -f docker-compose.niteshift.yml \
-              up --remove-orphans
-      port: 8011
-      stopGracePeriod: 60s
+          exec docker compose -p posthog -f docker-compose.dev.yml -f docker-compose.niteshift.yml \
+              up db redis7 zookeeper kafka kafka-init clickhouse objectstorage
+      stopGracePeriod: 90s
 
-    # phrocs has no foreground mode because its TUI requires a TTY and consumes
-    # excessive memory under a pseudo-TTY. Start it detached, keep the service
-    # open for its lifetime, and stop it during shutdown.
-    - name: dev-stack
+    - name: backend
       command: |
-          set -euo pipefail
-          export PATH="/opt/node/bin:$PATH"
-          source .venv/bin/activate
+          export PATH="/opt/node/bin:$PWD/.venv/bin:$PATH"
+          # .env.development and .env.services are the repo's committed dev defaults; bin/start
+          # loads them this way for host-side processes.
+          while IFS="=" read -r name value; do
+              if [[ -n "$name" && "$name" != \#* && -z "${!name:-}" ]]; then
+                  export "$name=$value"
+              fi
+          done < <(cat .env.development .env.services)
+          # bin/start-backend otherwise binds the Docker bridge address, which localhost misses.
+          export HOST_BIND=0.0.0.0
+          # Emit same-origin Vite URLs, so the proxy serves the app and its modules as one origin.
+          export JS_URL=""
+          # personhog is not running here; an empty address takes the Django ORM fallbacks.
+          export PERSONHOG_ADDR=""
+          exec ./bin/start-backend
 
-          # The browser reaches the app through the preview URL, so Django must
-          # accept that URL as a POST origin.
-          export EXTRA_CSRF_TRUSTED_ORIGINS="${NITESHIFT_PORT_8011_URL:-http://localhost:8011}"
+    - name: worker
+      command: |
+          export PATH="/opt/node/bin:$PWD/.venv/bin:$PATH"
+          while IFS="=" read -r name value; do
+              if [[ -n "$name" && "$name" != \#* && -z "${!name:-}" ]]; then
+                  export "$name=$value"
+              fi
+          done < <(cat .env.development .env.services)
+          export PERSONHOG_ADDR=""
+          exec ./bin/start-celery worker
 
-          # The infra service owns the containers, so wait for them instead of
-          # starting a second container stack.
-          POSTHOG_SANDBOX= bin/wait-for-docker
-
-          trap 'phrocs stop >/dev/null 2>&1 || true; exit 0' TERM INT
-
-          ./bin/start -d
-          phrocs wait --timeout 900 || true
-
-          while pgrep -x phrocs >/dev/null 2>&1; do sleep 5 & wait $!; done
-      stopGracePeriod: 60s
+    - name: frontend
+      command: |
+          export PATH="/opt/node/bin:$PWD/.venv/bin:$PATH"
+          exec ./bin/start-frontend
       environment:
-          # The infra service already owns the infrastructure containers.
-          - name: POSTHOG_SANDBOX
-            value: '1'
-          # External browsers cannot reach Vite on localhost:8234, so serve its
-          # modules through the page's preview origin.
-          - name: JS_URL
-            value: ''
-          # Sandbox runs must not count as developer activity.
-          - name: POSTHOG_TELEMETRY_OPT_OUT
-            value: '1'
+          # Vite rejects the preview hostname otherwise.
+          - name: VITE_ALLOWED_HOSTS
+            value: localhost,.preview.niteshift.dev
+
+    # One origin for the browser: Django, the Vite dev server, and framing headers the preview
+    # panel accepts.
+    - name: proxy
+      port: 8010
+      command: |
+          exec caddy run --adapter caddyfile --config - <<'CADDY'
+          {
+              admin off
+              auto_https off
+              # Keep the preview edge's X-Forwarded-Proto, so Django knows the browser is on HTTPS.
+              servers {
+                  trusted_proxies static 0.0.0.0/0 ::/0
+              }
+          }
+          :{$PORT} {
+              # The Vite dev server owns its module graph; Django serves everything else.
+              @vite path /@* /src/* /node_modules/*
+              @vite_hmr header Sec-WebSocket-Protocol *vite-hmr*
+              handle @vite_hmr {
+                  reverse_proxy 127.0.0.1:8234
+              }
+              handle @vite {
+                  reverse_proxy 127.0.0.1:8234
+              }
+              handle {
+                  reverse_proxy 127.0.0.1:8000
+              }
+              # Django sends X-Frame-Options: SAMEORIGIN, which blanks the preview panel.
+              header {
+                  -X-Frame-Options
+                  Content-Security-Policy "frame-ancestors 'self' https://niteshift.dev https://*.niteshift.dev"
+              }
+          }
+          CADDY
