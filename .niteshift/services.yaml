@@ -1,10 +1,12 @@
 services:
-    # Postgres, Redis, Kafka, ClickHouse and object storage, the subset of the dev compose stack
-    # the web app needs. Temporal, the Rust services and the Node ingestion consumers are left out.
+    # Postgres, Redis, Kafka, ClickHouse, object storage and personhog, the subset of the dev compose
+    # stack the web app needs. Temporal, the other Rust services and Node ingestion are left out.
     - name: infra
       command: |
+          export POSTHOG_PERSONS_DB_NAME=posthog
           exec docker compose -p posthog -f docker-compose.dev.yml -f docker-compose.niteshift.yml \
-              up db redis7 zookeeper kafka kafka-init clickhouse objectstorage
+              up db redis7 zookeeper kafka kafka-init clickhouse objectstorage \
+              personhog-replica personhog-router
       stopGracePeriod: 90s
 
     - name: backend
@@ -17,12 +19,12 @@ services:
                   export "$name=$value"
               fi
           done < <(cat .env.development .env.services)
+          export PERSONS_DB_WRITER_URL="postgres://posthog:posthog@db:5432/posthog"
+          export PERSONS_DB_READER_URL="$PERSONS_DB_WRITER_URL"
           # bin/start-backend otherwise binds the Docker bridge address, which localhost misses.
           export HOST_BIND=0.0.0.0
           # Emit same-origin Vite URLs, so the proxy serves the app and its modules as one origin.
           export JS_URL=""
-          # personhog is not running here; an empty address takes the Django ORM fallbacks.
-          export PERSONHOG_ADDR=""
           exec ./bin/start-backend
 
     - name: worker
@@ -33,7 +35,8 @@ services:
                   export "$name=$value"
               fi
           done < <(cat .env.development .env.services)
-          export PERSONHOG_ADDR=""
+          export PERSONS_DB_WRITER_URL="postgres://posthog:posthog@db:5432/posthog"
+          export PERSONS_DB_READER_URL="$PERSONS_DB_WRITER_URL"
           exec ./bin/start-celery worker
 
     - name: frontend
