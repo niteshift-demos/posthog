@@ -69,9 +69,14 @@ services:
               handle @vite {
                   reverse_proxy 127.0.0.1:8234
               }
-              handle {
-                  reverse_proxy 127.0.0.1:8000
-              }
+            handle {
+                reverse_proxy 127.0.0.1:8000 {
+                    # Django 5.2 rejects hostnames with underscores per RFC 1034/1035;
+                    # sanitize the preview hostname before it reaches the app.
+                    header_up Host "_" "-"
+                    header_up X-Forwarded-Host "_" "-"
+                }
+            }
               # Django sends X-Frame-Options: SAMEORIGIN, which blanks the preview panel.
               header {
                   -X-Frame-Options
