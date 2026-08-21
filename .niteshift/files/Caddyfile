@@ -1,0 +1,51 @@
+# Single-origin front door for the preview.
+#
+# The preview authenticates each port on its own host, so the browser cannot pull
+# Vite modules from a second port. Django and Vite are served from one origin
+# instead: Vite's own paths go to the dev server, everything else to Django.
+{
+	auto_https off
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+(django) {
+	reverse_proxy web:8000 {
+		# Django validates the forwarded host against RFC 1034 and rejects the
+		# underscore a preview hostname can carry, so give it the local one.
+		header_up X-Forwarded-Host localhost:8010
+	}
+}
+
+:8010 {
+	@vite {
+		path /@*
+		path /src/*
+		path /node_modules/*
+		path /public/*
+		path /.vite/*
+		path /__vite_ping
+	}
+	@vite-hmr header Sec-WebSocket-Protocol *vite-hmr*
+
+	# Django sends X-Frame-Options: SAMEORIGIN, which blanks the preview panel.
+	header -X-Frame-Options
+	header +Content-Security-Policy "frame-ancestors 'self' https://niteshift.dev https://*.niteshift.dev"
+
+	handle @vite-hmr {
+		reverse_proxy vite:8234
+	}
+	handle @vite {
+		reverse_proxy vite:8234 {
+			# A path Vite does not own still belongs to Django.
+			@missing status 404
+			handle_response @missing {
+				import django
+			}
+		}
+	}
+	handle {
+		import django
+	}
+}

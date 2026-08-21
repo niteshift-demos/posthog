@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+NODE_VERSION="$(cat .nvmrc)"
+NODE_PREFIX="/opt/node-$NODE_VERSION"
+
+echo "==> Sandbox prerequisites"
+.niteshift/files/sandbox-prepare.sh
+
+echo "==> System packages"
+# bin/download-mmdb decompresses the GeoLite database with brotli.
+command -v brotli >/dev/null || {
+    apt-get install -y -qq brotli || { apt-get update -qq && apt-get install -y -qq brotli; }
+}
+
+echo "==> Node $NODE_VERSION"
+if [ ! -x "$NODE_PREFIX/bin/node" ]; then
+    tarball="node-$NODE_VERSION-linux-x64"
+    curl -fsSL "https://nodejs.org/dist/$NODE_VERSION/$tarball.tar.xz" -o "/tmp/$tarball.tar.xz"
+    rm -rf "$NODE_PREFIX" "/opt/$tarball"
+    tar -xf "/tmp/$tarball.tar.xz" -C /opt
+    mv "/opt/$tarball" "$NODE_PREFIX"
+    rm -f "/tmp/$tarball.tar.xz"
+fi
+
+echo "==> Python dependencies"
+uv sync
+
+source .niteshift/files/env.sh
+
+echo "==> JavaScript dependencies"
+COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm install --frozen-lockfile --prefer-offline
+
+echo "==> Quill design system"
+# products/*/frontend imports @posthog/quill-charts, which is built from source.
+pnpm quill:build
+
+echo "==> Package links for products/"
+# products/* import packages they do not declare as dependencies (@posthog/quill-charts,
+# @tiptap/html, ...). pnpm only links declared ones, so Vite cannot resolve those imports
+# from outside frontend/. Republish frontend's tree at the root, where the lookup ends up.
+link_pkg() {
+    [ -e "node_modules/$2" ] && return 0
+    mkdir -p "node_modules/$(dirname "$2")"
+    ln -s "$(readlink -f "$1")" "node_modules/$2"
+}
+for entry in frontend/node_modules/*; do
+    name="$(basename "$entry")"
+    case "$name" in
+        .*) continue ;;
+        @*) for scoped in "$entry"/*; do link_pkg "$scoped" "$name/$(basename "$scoped")"; done ;;
+        *) link_pkg "$entry" "$name" ;;
+    esac
+done
+
+echo "==> Toolbar and worker bundles"
+# Django serves these from frontend/dist; Vite never builds them.
+(cd frontend && node ./bin/build-toolbar.mjs && node ./bin/watch-workers.mjs)
+
+echo "==> GeoLite database"
+./bin/download-mmdb
+
+echo "==> Container images"
+docker compose -p posthog \
+    -f docker-compose.dev.yml \
+    -f .niteshift/files/docker-compose.niteshift.yml \
+    pull --policy missing --quiet \
+    db redis7 zookeeper kafka kafka-init clickhouse objectstorage maildev \
+    personhog-replica personhog-router niteshift-proxy
+
+echo "==> Infrastructure"
+ns services start stack
+bin/wait-for-docker
+
+echo "==> Migrations"
+# Sequential on purpose: ClickHouse migrations read posthog_instancesetting, which
+# the Postgres migrations create (bin/mprocs.yaml gates the same way).
+bin/migrate --scope=postgres
+bin/migrate --scope=clickhouse
+bin/migrate --scope=persons
+
+echo "==> Demo project"
+# generate_demo_data always creates a new account, so only seed the empty instance.
+if [ "$(python manage.py shell -c 'from posthog.models import User; print(User.objects.count())' | tail -1)" = "0" ]; then
+    python manage.py generate_demo_data \
+        --n-clusters 30 --days-past 30 --days-future 7 \
+        --skip-materialization --skip-migration-check
+else
+    echo "Users already exist, skipping"
+fi
+
+echo "==> Local dev bootstrap"
+./bin/ensure-local-setup
+
+echo "==> Setup complete"

@@ -1,0 +1,48 @@
+services:
+    # One supervision boundary for the whole container stack, including the Caddy
+    # front door the preview points at. Compose keeps running in the foreground.
+    - name: stack
+      port: 8010
+      stopGracePeriod: 90s
+      command: |
+          source .niteshift/files/env.sh
+          exec docker compose -p posthog \
+              -f docker-compose.dev.yml \
+              -f .niteshift/files/docker-compose.niteshift.yml \
+              up --no-build \
+              db redis7 zookeeper kafka kafka-init clickhouse objectstorage maildev \
+              personhog-replica personhog-router niteshift-proxy
+
+    - name: backend
+      # Granian waits out in-flight SSE streams before its worker-kill timeout fires.
+      stopGracePeriod: 30s
+      command: |
+          source .niteshift/files/env.sh
+          # Granian otherwise binds only the docker bridge gateway, which the preview cannot reach.
+          export HOST_BIND=0.0.0.0
+          # The wildcard keeps login working on the first task, before Niteshift
+          # publishes NITESHIFT_PORT_8010_URL for this repository.
+          export EXTRA_CSRF_TRUSTED_ORIGINS="$NS_PUBLIC_ORIGIN,http://localhost:8010,https://*.preview.niteshift.dev"
+          export SITE_URL="$NS_PUBLIC_ORIGIN"
+          # Empty JS_URL makes the injected Vite script tags same-origin.
+          export JS_URL=
+          bin/wait-for-docker personhog-router
+          exec ./bin/start-backend
+
+    - name: frontend
+      command: |
+          source .niteshift/files/env.sh
+          # Vite checks the Host header, which arrives as the preview hostname.
+          export VITE_ALLOWED_HOSTS=localhost,127.0.0.1,.niteshift.dev
+          # Read as server.origin and hmr.clientPort by frontend/vite.config.mts, so the
+          # preview URL needs its implicit port spelled out for the HMR socket.
+          case "$NS_PUBLIC_ORIGIN" in
+              https://*) export JS_URL="$NS_PUBLIC_ORIGIN:443" ;;
+              *) export JS_URL="$NS_PUBLIC_ORIGIN" ;;
+          esac
+          # Vite only, unlike bin/start-frontend: its toolbar and worker watchers follow
+          # the pnpm store through symlinks and grow past this sandbox's memory. Setup
+          # builds those bundles once instead.
+          export DEBUG=0
+          pnpm --filter=@posthog/frontend build:products
+          exec pnpm --filter=@posthog/frontend exec vite --host 0.0.0.0

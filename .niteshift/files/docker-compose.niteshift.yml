@@ -1,0 +1,21 @@
+services:
+    # ClickHouse publishes its TLS ports on the host and 8443 is reserved by the
+    # sandbox. Dev connects over plain HTTP (CLICKHOUSE_SECURE=false).
+    clickhouse:
+        ports: !override
+            - '8123:8123'
+            - '9000:9000'
+            - '9009:9009'
+
+    # The preview's single origin. Replaces the stock `proxy` service, which routes
+    # to capture and flags containers this environment does not run.
+    niteshift-proxy:
+        image: caddy
+        restart: unless-stopped
+        ports:
+            - '8010:8010'
+        extra_hosts:
+            - 'web:host-gateway'
+            - 'vite:host-gateway'
+        volumes:
+            - ./.niteshift/files/Caddyfile:/etc/caddy/Caddyfile:ro

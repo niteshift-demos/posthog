@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# A resumed sandbox comes back without the /etc/hosts aliases and inotify limits
+# the dev stack was set up with.
+.niteshift/files/sandbox-prepare.sh
+
+# Nothing else can start until the Docker daemon is back.
+for _ in $(seq 1 60); do
+    docker info >/dev/null 2>&1 && exit 0
+    sleep 2
+done
+echo "Docker daemon did not come back within 120s" >&2
+exit 1
