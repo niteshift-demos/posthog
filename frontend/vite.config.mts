@@ -100,6 +100,8 @@ export default defineConfig(({ mode }) => {
             manifest: true,
             outDir: 'dist',
             rollupOptions: {
+                // Eager output keeps the first preview viewer from becoming the bundled-dev compiler.
+                ...(useBundledDev ? { experimental: { devMode: { lazy: false } } } : {}),
                 input: {
                     index: resolve(__dirname, 'src/index.tsx'),
                     exporter: resolve(__dirname, 'src/exporter/index.tsx'),
