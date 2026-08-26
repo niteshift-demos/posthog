@@ -524,14 +524,20 @@ def _build_template_context(
         # Add vite dev scripts for development
         js_url = get_js_url(request)
         csp_nonce = getattr(request, "csp_nonce", "")
-        context["vite_dev_scripts"] = f"""
+        refresh_preamble = (
+            f'<script type="module" src="{js_url}/@react-refresh"></script>'
+            if settings.VITE_BUNDLED_DEV
+            else f"""
         <script nonce="{csp_nonce}" type="module">
             import RefreshRuntime from '{js_url}/@react-refresh'
             RefreshRuntime.injectIntoGlobalHook(window)
             window.$RefreshReg$ = () => {{}}
             window.$RefreshSig$ = () => (type) => type
             window.__vite_plugin_react_preamble_installed__ = true
-        </script>
+        </script>"""
+        )
+        context["vite_dev_scripts"] = f"""
+        {refresh_preamble}
         <!-- Vite development server -->
         <script type="module" src="{js_url}/@vite/client"></script>
         <script type="module" src="{js_url}/{source_path}"></script>"""

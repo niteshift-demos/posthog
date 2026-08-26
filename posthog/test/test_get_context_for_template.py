@@ -49,6 +49,15 @@ class TestGetContextForTemplate(APIBaseTest):
 
         assert actual["stripe_public_key"] == "pk_test_12345"
 
+    def test_uses_side_effect_refresh_preamble_for_bundled_dev(self):
+        with self.settings(TEST=False, VITE_BUNDLED_DEV=True):
+            actual = get_context_for_template("index.html", MagicMock())
+
+        assert (
+            '<script type="module" src="http://localhost:8234/@react-refresh"></script>' in actual["vite_dev_scripts"]
+        )
+        assert "import RefreshRuntime" not in actual["vite_dev_scripts"]
+
     @parameterized.expand(
         [
             ("configured", {"pathname": "/dashboard/42", "pinned": True, "title": "Default dashboard"}),

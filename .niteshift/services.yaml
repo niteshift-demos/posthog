@@ -61,6 +61,10 @@ services:
           # Emit same-origin Vite URLs, so the proxy serves the app and its modules as one origin.
           export JS_URL=""
           exec ./bin/start-backend
+      environment:
+          # Match Django's development scripts to the frontend's bundled entry points.
+          - name: VITE_BUNDLED_DEV
+            value: '1'
 
     - name: worker
       command: |
@@ -79,6 +83,9 @@ services:
           export PATH="/opt/node/bin:$PWD/.venv/bin:$PATH"
           exec ./bin/start-frontend
       environment:
+          # Bundle the large frontend module graph so preview loads cross the proxy in fewer requests.
+          - name: VITE_BUNDLED_DEV
+            value: '1'
           # Vite rejects the preview hostname otherwise.
           - name: VITE_ALLOWED_HOSTS
             value: localhost,.preview.niteshift.dev
@@ -87,7 +94,14 @@ services:
     # panel accepts.
     - name: proxy
       port: 8010
+      auth:
+          type: cookie-file
+          command: .niteshift/files/write-auth-state
       command: |
+          # Bundled dev briefly serves the HTML fallback at the asset URL while its first build runs.
+          until curl -sfI http://127.0.0.1:8234/assets/index.js | rg -qi '^Content-Type: text/javascript'; do
+              sleep 1
+          done
           exec caddy run --adapter caddyfile --config - <<'CADDY'
           {
               admin off
@@ -98,8 +112,25 @@ services:
               }
           }
           :{$PORT} {
+              encode zstd gzip
               # The Vite dev server owns its module graph; Django serves everything else.
-              @vite path /@* /src/* /node_modules/*
+              @vite_index path /src/index.tsx
+              handle @vite_index {
+                  redir * /assets/index.js 307
+              }
+              @vite_exporter path /src/exporter/index.tsx
+              handle @vite_exporter {
+                  redir * /assets/exporter.js 307
+              }
+              @vite_render_query path /src/render-query/index.tsx
+              handle @vite_render_query {
+                  redir * /assets/render_query.js 307
+              }
+              @vite_react_refresh path /@react-refresh
+              handle @vite_react_refresh {
+                  redir * /assets/react_refresh.js 307
+              }
+              @vite path /@* /assets/* /src/* /node_modules/*
               @vite_hmr header Sec-WebSocket-Protocol *vite-hmr*
               handle @vite_hmr {
                   reverse_proxy 127.0.0.1:8234
