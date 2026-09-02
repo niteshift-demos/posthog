@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import dagster
 from clickhouse_driver import Client
@@ -16,6 +16,7 @@ from posthog.dags.person_overrides import (
     squash_person_overrides,
     wait_for_overrides_delete_mutations,
 )
+from posthog.dags.tests.conftest import insert_flag_evaluations
 
 
 def test_full_job(cluster: ClickhouseCluster):
@@ -35,6 +36,21 @@ def test_full_job(cluster: ClickhouseCluster):
         )
 
     cluster.any_host(insert_events).result()
+
+    def insert_flag_evaluation_rows(client: Client) -> None:
+        insert_flag_evaluations(
+            [
+                (0, "a", UUID(int=0), uuid4(), timestamp - timedelta(hours=24)),
+                (0, "b", UUID(int=1), uuid4(), timestamp - timedelta(hours=24)),
+                (0, "c", UUID(int=2), uuid4(), timestamp - timedelta(hours=24)),
+                (0, "d", UUID(int=3), uuid4(), timestamp - timedelta(hours=12)),
+                (0, "e", UUID(int=4), uuid4(), timestamp - timedelta(hours=6)),
+                (0, "z", UUID(int=100), uuid4(), timestamp - timedelta(hours=3)),
+            ],
+            client,
+        )
+
+    cluster.any_host(insert_flag_evaluation_rows).result()
 
     def insert_overrides(client: Client) -> None:
         client.execute(
@@ -56,6 +72,12 @@ def test_full_job(cluster: ClickhouseCluster):
         assert len(rows) == len(result)
         return result
 
+    def get_distinct_ids_on_flag_evaluations_by_person(client: Client) -> dict[UUID, set[str]]:
+        rows = client.execute("SELECT person_id, groupUniqArray(distinct_id) FROM flag_evaluations GROUP BY ALL")
+        result = {person_id: set(distinct_ids) for person_id, distinct_ids in rows}
+        assert len(rows) == len(result)
+        return result
+
     def get_distinct_ids_with_overrides(client: Client) -> set[str]:
         rows = client.execute("SELECT distinct_id FROM person_distinct_id_overrides FINAL")
         result = {distinct_id for [distinct_id] in rows}
@@ -64,6 +86,14 @@ def test_full_job(cluster: ClickhouseCluster):
 
     # check preconditions
     assert cluster.any_host(get_distinct_ids_on_events_by_person).result() == {
+        UUID(int=0): {"a"},
+        UUID(int=1): {"b"},
+        UUID(int=2): {"c"},
+        UUID(int=3): {"d"},
+        UUID(int=4): {"e"},
+        UUID(int=100): {"z"},
+    }
+    assert cluster.any_host(get_distinct_ids_on_flag_evaluations_by_person).result() == {
         UUID(int=0): {"a"},
         UUID(int=1): {"b"},
         UUID(int=2): {"c"},
@@ -107,6 +137,13 @@ def test_full_job(cluster: ClickhouseCluster):
 
     # check postconditions
     assert cluster.any_host(get_distinct_ids_on_events_by_person).result() == {
+        UUID(int=0): {"a", "c"},
+        UUID(int=1): {"b", "d", "e"},
+        UUID(int=100): {"z"},
+    }
+    # Merged-away person_ids must be squashed here too: the overrides are dropped straight after,
+    # so a row still stamped with one would survive a deletion of the person it merged into.
+    assert cluster.any_host(get_distinct_ids_on_flag_evaluations_by_person).result() == {
         UUID(int=0): {"a", "c"},
         UUID(int=1): {"b", "d", "e"},
         UUID(int=100): {"z"},

@@ -97,6 +97,17 @@ If a future producer emitted rows before person resolution, leaving `person_id` 
 The fix would belong to the producer, not the scanner.
 Keeping the fork downstream of person resolution is the contract, tracked on #81002.
 
+## Squash prerequisite: merged persons
+
+Write-time parity is not enough on its own.
+When person A merges into B, the rows written before the merge keep A's `person_id`, and a deletion is queued with B's uuid — nothing expands it to the uuids a merge absorbed.
+What reconciles the two is `squash_person_overrides`, which applies `person_distinct_id_overrides` to the stored rows and then deletes the overrides it applied.
+
+So every table registered in `PERSONAL_DATA_TARGETS` has to be rewritten by that squash, not just swept by the scanners.
+`sharded_flag_evaluations` is rewritten alongside the events tables in `run_person_id_update_mutations`.
+
+A table the squash skips cannot be reconciled after the fact: the overrides are deleted in the same run that applies them, so the mapping from A to B is gone and the divergence is permanent until the table's TTL drops the part.
+
 ## Related, and deliberately unchanged
 
 `_fetch_stats` counts only the events tables. It feeds `AUTO_APPROVE_MAX_EVENTS`, a cost heuristic rather than a completeness claim, so a request auto-approved as small may move somewhat more rows than measured.
@@ -106,6 +117,7 @@ Keeping the fork downstream of person resolution is the contract, tracked on #81
 ## Adding a table
 
 Register it in `PERSONAL_DATA_TARGETS`, with capability flags reflecting what its schema can actually take and what the sweep code actually implements: `accepts_property_rewrite` needs the rewrite machinery to reach the table, not just assignable columns.
+Also rewrite it in `run_person_id_update_mutations` (`posthog/dags/person_overrides.py`), which needs `person_id` outside the table's sort key so `ALTER … UPDATE` can assign it.
 If it is not going to be swept, add it to `TTL_ONLY_TABLES` with the window you are accepting.
 
 `posthog/clickhouse/test/test_deletion_coverage.py` fails on any storage table that declares `person_properties` and appears in neither list, so the decision has to be made rather than skipped.

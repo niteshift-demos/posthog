@@ -120,7 +120,8 @@ EVENTS_JSON = DeletionTarget(
 # and queued-uuid sweeps must reach it. It takes neither of the richer sweeps; both exclusions are
 # explained in docs/internal/clickhouse-deletion-coverage.md. Its producer populates person_id
 # exactly as the events pipeline does, so a person sweep matches on person_id like every other
-# events-shaped table.
+# events-shaped table, and squash_person_overrides rewrites it here too so a merged-away person_id
+# does not outlive the deletion of the person it merged into.
 FLAG_EVALUATIONS = DeletionTarget(
     data_table=FLAG_EVALUATIONS_DATA_TABLE,
     read_table=FLAG_EVALUATIONS_TABLE,
@@ -174,6 +175,11 @@ def resolve_targets(
 ) -> list[DeletionTarget]:
     """The subset of ``targets`` that actually exists on this cluster."""
     return [target for target in targets if is_present(cluster, target)]
+
+
+def cluster_has_flag_evaluations_table(cluster: ClickhouseCluster) -> bool:
+    """Whether any data node carries the flag-evaluations data table."""
+    return is_present(cluster, FLAG_EVALUATIONS)
 
 
 def personal_data_tables(cluster: ClickhouseCluster) -> list[str]:

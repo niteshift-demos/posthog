@@ -11,8 +11,10 @@ from posthog import settings
 from posthog.clickhouse.cluster import AlterTableMutationRunner, ClickhouseCluster, MutationWaiter
 from posthog.dags.common import JobOwners
 from posthog.dags.common.overrides_manager import OverridesSnapshotDictionary, OverridesSnapshotTable
+from posthog.models.deletion_targets import cluster_has_flag_evaluations_table
 from posthog.models.event.deletion import cluster_has_events_json_table
 from posthog.models.event.sql import EVENTS_DATA_TABLE, EVENTS_JSON_DATA_TABLE
+from posthog.models.flag_evaluations.sql import FLAG_EVALUATIONS_DATA_TABLE
 from posthog.models.person.sql import PERSON_DISTINCT_ID_OVERRIDES_TABLE
 
 
@@ -111,6 +113,17 @@ class PersonOverridesSnapshotDictionary(OverridesSnapshotDictionary):
         rewritten or person_id diverges between them while they coexist."""
         return AlterTableMutationRunner(
             table=EVENTS_JSON_DATA_TABLE,
+            commands=self.update_commands,
+            parameters={"name": self.qualified_name},
+        )
+
+    @property
+    def flag_evaluations_update_mutation_runner(self) -> AlterTableMutationRunner:
+        """The same person_id squash applied to flag-evaluation telemetry. The squash drops the
+        overrides right after applying them, so a row left holding a merged-away person_id can never
+        be reconciled: a later deletion of the surviving person would miss it."""
+        return AlterTableMutationRunner(
+            table=FLAG_EVALUATIONS_DATA_TABLE,
             commands=self.update_commands,
             parameters={"name": self.qualified_name},
         )
@@ -259,6 +272,8 @@ def run_person_id_update_mutations(
     dictionary.update_mutation_runner.run_on_shards(cluster)
     if cluster_has_events_json_table(cluster):
         dictionary.events_json_update_mutation_runner.run_on_shards(cluster)
+    if cluster_has_flag_evaluations_table(cluster):
+        dictionary.flag_evaluations_update_mutation_runner.run_on_shards(cluster)
     return dictionary
 
 
