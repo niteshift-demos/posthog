@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Kernel and host settings do not survive a sandbox resume, so restore the two the dev stack
+# depends on before the services come back.
+set -euo pipefail
+
+if ! grep -q clickhouse-coordinator /etc/hosts; then
+    echo "→ Restoring the compose host aliases in /etc/hosts"
+    echo '127.0.0.1 db redis7 kafka clickhouse clickhouse-coordinator objectstorage seaweedfs temporal' >>/etc/hosts
+fi
+
+echo "→ Restoring the inotify limits"
+sysctl -q -w fs.inotify.max_user_watches=1048576 -w fs.inotify.max_user_instances=8192

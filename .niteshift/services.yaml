@@ -1,0 +1,155 @@
+services:
+    # The subset of the dev compose stack the web app needs, one supervised unit per lifecycle
+    # group so each can restart alone. Temporal, the other Rust services and Node ingestion are
+    # left out. --no-deps keeps a unit from starting (and later stopping) containers another
+    # unit owns: clickhouse declares kafka/zookeeper, personhog-replica declares db.
+    - name: db
+      command: |
+          exec docker compose -p posthog -f docker-compose.dev.yml -f docker-compose.niteshift.yml \
+              up db
+      stopGracePeriod: 30s
+
+    - name: redis
+      command: |
+          exec docker compose -p posthog -f docker-compose.dev.yml -f docker-compose.niteshift.yml \
+              up redis7
+      stopGracePeriod: 20s
+
+    # kafka-init pre-creates topics and exits; it re-runs (idempotently) on every unit restart.
+    - name: kafka
+      command: |
+          exec docker compose -p posthog -f docker-compose.dev.yml -f docker-compose.niteshift.yml \
+              up zookeeper kafka kafka-init
+      stopGracePeriod: 30s
+
+    - name: clickhouse
+      command: |
+          exec docker compose -p posthog -f docker-compose.dev.yml -f docker-compose.niteshift.yml \
+              up --no-deps clickhouse
+      stopGracePeriod: 30s
+
+    - name: objectstorage
+      command: |
+          exec docker compose -p posthog -f docker-compose.dev.yml -f docker-compose.niteshift.yml \
+              up objectstorage
+      stopGracePeriod: 20s
+
+    - name: personhog
+      command: |
+          exec docker compose -p posthog -f docker-compose.dev.yml -f docker-compose.niteshift.yml \
+              up --no-deps personhog-replica personhog-router
+      stopGracePeriod: 20s
+      environment:
+          # Points the replica at the main database, matching the seeded persons.
+          - name: POSTHOG_PERSONS_DB_NAME
+            value: posthog
+
+    - name: backend
+      command: |
+          export PATH="/opt/node/bin:$PWD/.venv/bin:$PATH"
+          # .env.development and .env.services are the repo's committed dev defaults; bin/start
+          # loads them this way for host-side processes.
+          while IFS="=" read -r name value; do
+              if [[ -n "$name" && "$name" != \#* && -z "${!name:-}" ]]; then
+                  export "$name=$value"
+              fi
+          done < <(cat .env.development .env.services)
+          export PERSONS_DB_WRITER_URL="postgres://posthog:posthog@db:5432/posthog"
+          export PERSONS_DB_READER_URL="$PERSONS_DB_WRITER_URL"
+          # bin/start-backend otherwise binds the Docker bridge address, which localhost misses.
+          export HOST_BIND=0.0.0.0
+          # Emit same-origin Vite URLs, so the proxy serves the app and its modules as one origin.
+          export JS_URL=""
+          exec ./bin/start-backend
+      environment:
+          # Match Django's development scripts to the frontend's bundled entry points.
+          - name: VITE_BUNDLED_DEV
+            value: '1'
+
+    - name: worker
+      command: |
+          export PATH="/opt/node/bin:$PWD/.venv/bin:$PATH"
+          while IFS="=" read -r name value; do
+              if [[ -n "$name" && "$name" != \#* && -z "${!name:-}" ]]; then
+                  export "$name=$value"
+              fi
+          done < <(cat .env.development .env.services)
+          export PERSONS_DB_WRITER_URL="postgres://posthog:posthog@db:5432/posthog"
+          export PERSONS_DB_READER_URL="$PERSONS_DB_WRITER_URL"
+          exec ./bin/start-celery worker
+
+    - name: frontend
+      command: |
+          export PATH="/opt/node/bin:$PWD/.venv/bin:$PATH"
+          exec ./bin/start-frontend
+      environment:
+          # Bundle the large frontend module graph so preview loads cross the proxy in fewer requests.
+          - name: VITE_BUNDLED_DEV
+            value: '1'
+          # Vite rejects the preview hostname otherwise.
+          - name: VITE_ALLOWED_HOSTS
+            value: localhost,.preview.niteshift.dev
+
+    # One origin for the browser: Django, the Vite dev server, and framing headers the preview
+    # panel accepts.
+    - name: proxy
+      port: 8010
+      auth:
+          type: cookie-file
+          command: .niteshift/files/write-auth-state
+      command: |
+          # Bundled dev briefly serves the HTML fallback at the asset URL while its first build runs.
+          until curl -sfI http://127.0.0.1:8234/assets/index.js | rg -qi '^Content-Type: text/javascript'; do
+              sleep 1
+          done
+          exec caddy run --adapter caddyfile --config - <<'CADDY'
+          {
+              admin off
+              auto_https off
+              # Keep the preview edge's X-Forwarded-Proto, so Django knows the browser is on HTTPS.
+              servers {
+                  trusted_proxies static 0.0.0.0/0 ::/0
+              }
+          }
+          :{$PORT} {
+              encode zstd gzip
+              # The Vite dev server owns its module graph; Django serves everything else.
+              @vite_index path /src/index.tsx
+              handle @vite_index {
+                  redir * /assets/index.js 307
+              }
+              @vite_exporter path /src/exporter/index.tsx
+              handle @vite_exporter {
+                  redir * /assets/exporter.js 307
+              }
+              @vite_render_query path /src/render-query/index.tsx
+              handle @vite_render_query {
+                  redir * /assets/render_query.js 307
+              }
+              @vite_react_refresh path /@react-refresh
+              handle @vite_react_refresh {
+                  redir * /assets/react_refresh.js 307
+              }
+              @vite path /@* /assets/* /src/* /node_modules/*
+              @vite_hmr header Sec-WebSocket-Protocol *vite-hmr*
+              handle @vite_hmr {
+                  reverse_proxy 127.0.0.1:8234
+              }
+              handle @vite {
+                  reverse_proxy 127.0.0.1:8234
+              }
+            handle {
+                reverse_proxy 127.0.0.1:8000 {
+                    # Django 5.2 rejects hostnames with underscores per RFC 1034/1035;
+                    # sanitize the preview hostname before it reaches the app.
+                    header_up Host "_" "-"
+                    header_up X-Forwarded-Host "_" "-"
+                }
+            }
+              # Django sends X-Frame-Options: SAMEORIGIN, which blanks the preview panel.
+              header {
+                  -X-Frame-Options
+                  Content-Security-Policy "frame-ancestors 'self' https://niteshift.dev https://*.niteshift.dev"
+              }
+          }
+          CADDY

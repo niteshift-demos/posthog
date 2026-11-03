@@ -14,6 +14,7 @@ import { publicAssetsPlugin } from './plugins/vite-public-assets-plugin'
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
     const isDev = mode === 'development'
+    const useBundledDev = process.env.VITE_BUNDLED_DEV === '1'
 
     return {
         plugins: [
@@ -73,7 +74,10 @@ export default defineConfig(({ mode }) => {
                 // it by default when imported from products/*/frontend, like the @posthog/icons case above.
                 // Alias each export explicitly, subpath first: a lone package-root alias would rewrite the
                 // '@posthog/llm-normalizer/types' import to a nonexistent path instead of src/types.ts.
-                '@posthog/llm-normalizer/types': resolve(__dirname, 'node_modules/@posthog/llm-normalizer/src/types.ts'),
+                '@posthog/llm-normalizer/types': resolve(
+                    __dirname,
+                    'node_modules/@posthog/llm-normalizer/src/types.ts'
+                ),
                 '@posthog/llm-normalizer': resolve(__dirname, 'node_modules/@posthog/llm-normalizer/src/index.ts'),
                 // These @tiptap packages live only in frontend/node_modules, which products/*/frontend
                 // files can't reach by walking up from their own directory. Alias each package
@@ -96,11 +100,14 @@ export default defineConfig(({ mode }) => {
             manifest: true,
             outDir: 'dist',
             rollupOptions: {
+                // Eager output keeps the first preview viewer from becoming the bundled-dev compiler.
+                ...(useBundledDev ? { experimental: { devMode: { lazy: false } } } : {}),
                 input: {
                     index: resolve(__dirname, 'src/index.tsx'),
                     exporter: resolve(__dirname, 'src/exporter/index.tsx'),
                     render_query: resolve(__dirname, 'src/render-query/index.tsx'),
                     toolbar: resolve(__dirname, 'src/toolbar/index.tsx'),
+                    ...(useBundledDev ? { react_refresh: resolve(__dirname, 'react-refresh-entry.mjs') } : {}),
                 },
                 output: {
                     entryFileNames: isDev ? '[name].js' : '[name]-[hash].js',
@@ -109,6 +116,9 @@ export default defineConfig(({ mode }) => {
                 },
             },
             sourcemap: true,
+        },
+        experimental: {
+            bundledDev: useBundledDev,
         },
         worker: {
             format: 'es', // Use ES modules to support WASM imports

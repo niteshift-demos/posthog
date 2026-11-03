@@ -95,6 +95,7 @@ if DEBUG:
     JS_URL: str = os.getenv("JS_URL", "http://localhost:8234").rstrip("/")
 else:
     JS_URL = os.getenv("JS_URL", "").rstrip("/")
+VITE_BUNDLED_DEV: bool = get_from_env("VITE_BUNDLED_DEV", False, type_cast=str_to_bool)
 
 DISABLE_MMDB: bool = get_from_env(
     "DISABLE_MMDB", TEST, type_cast=str_to_bool
