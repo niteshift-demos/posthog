@@ -6,13 +6,17 @@ from zoneinfo import ZoneInfo
 from posthog.test.base import APIBaseTest, FuzzyInt, QueryMatchingTest, snapshot_postgres_queries_context
 from unittest.mock import MagicMock, patch
 
+from django.test import SimpleTestCase
 from django.utils.timezone import now
 
 from parameterized import parameterized
 from rest_framework import status
 
 from posthog.models import Organization, Team, User
+from posthog.models.personal_api_key import PersonalAPIKey, hash_key_value
+from posthog.models.utils import generate_random_token_personal
 
+from products.annotations.backend.api.annotation import AnnotationResourceFilterSerializer
 from products.annotations.backend.models.annotation import Annotation
 from products.dashboards.backend.models.dashboard import Dashboard
 from products.product_analytics.backend.facade.models import Insight
@@ -320,6 +324,12 @@ class TestAnnotation(APIBaseTest, QueryMatchingTest):
         response = self.client.get(f"/api/projects/{self.team.id}/annotations/{query}")
         assert response.status_code == status.HTTP_200_OK, response.json()
         assert {result["content"] for result in response.json()["results"]} == expected_contents
+
+        summary = self.client.get(f"/api/projects/{self.team.id}/annotations/summary/{query}")
+        assert summary.status_code == status.HTTP_200_OK
+        assert summary.json()["total"] == len(expected_contents)
+        assert summary.json()["scope_counts"]["project"] == len(expected_contents)
+        assert summary.json()["daily_counts"] == []
 
     def test_deleting_annotation(self) -> None:
         new_user = User.objects.create_and_join(self.organization, "new_annotations@posthog.com", None)
@@ -644,6 +654,10 @@ class TestAnnotation(APIBaseTest, QueryMatchingTest):
         list_response = self.client.get(f"/api/projects/{self.team.id}/annotations/")
         assert annotation.id not in {a["id"] for a in list_response.json()["results"]}
 
+        summary_response = self.client.get(f"/api/projects/{self.team.id}/annotations/summary/")
+        assert summary_response.status_code == status.HTTP_200_OK
+        assert summary_response.json()["total"] == 0
+
         retrieve_response = self.client.get(f"/api/projects/{self.team.id}/annotations/{annotation.id}/")
         assert retrieve_response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -658,6 +672,9 @@ class TestAnnotation(APIBaseTest, QueryMatchingTest):
 
         list_response = self.client.get(f"/api/projects/{self.team.id}/annotations/")
         assert annotation.id in {a["id"] for a in list_response.json()["results"]}
+
+        summary_response = self.client.get(f"/api/projects/{self.team.id}/annotations/summary/")
+        assert summary_response.json()["total"] == 1
 
     def test_creating_annotation_with_nonexistent_insight_returns_400(self) -> None:
         response = self.client.post(
@@ -689,3 +706,137 @@ class TestAnnotation(APIBaseTest, QueryMatchingTest):
 
         assert response.status_code == status.HTTP_201_CREATED
         assert response.json()["dashboard_item"] == insight.id
+
+
+class TestAnnotationSummary(APIBaseTest):
+    dashboard: Dashboard
+    insight: Insight
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        super().setUpTestData()
+        cls.dashboard = Dashboard.objects.create(team=cls.team, name="Release dashboard")
+        cls.insight = Insight.objects.create(team=cls.team, name="Release trend")
+        for content, scope, date_marker, dashboard, insight in [
+            ("Release project", Annotation.Scope.PROJECT, "2024-01-01T10:00:00Z", None, None),
+            ("Release dashboard", Annotation.Scope.DASHBOARD, "2024-01-02T01:00:00+02:00", cls.dashboard, None),
+            ("Release insight", Annotation.Scope.INSIGHT, "2024-01-02T12:00:00Z", cls.dashboard, cls.insight),
+            ("Incident without date", Annotation.Scope.PROJECT, None, None, None),
+        ]:
+            Annotation.objects.create(
+                team=cls.team,
+                organization=cls.organization,
+                content=content,
+                scope=scope,
+                date_marker=date_marker,
+                dashboard=dashboard,
+                dashboard_item=insight,
+            )
+
+    def test_summary_counts_all_matches_before_pagination_and_groups_dates_in_utc(self) -> None:
+        response = self.client.get(f"/api/projects/{self.team.id}/annotations/", {"limit": 1, "offset": 1})
+        summary = self.client.get(f"/api/projects/{self.team.id}/annotations/summary/", {"limit": 1, "offset": 1})
+
+        assert response.status_code == summary.status_code == status.HTTP_200_OK
+        assert response.json()["count"] == 4
+        assert len(response.json()["results"]) == 1
+        assert response.json()["results"][0]["content"] == "Release dashboard"
+        assert summary.json() == {
+            "total": 4,
+            "scope_counts": {"project": 2, "organization": 0, "dashboard": 1, "dashboard_item": 1, "recording": 0},
+            "daily_counts": [{"date": "2024-01-01", "count": 2}, {"date": "2024-01-02", "count": 1}],
+        }
+
+    @parameterized.expand(
+        [
+            ({"search": "release"}, {"Release project", "Release dashboard", "Release insight"}),
+            ({"search": "release", "scope": "insight"}, {"Release insight"}),
+            ({"dashboard_id": "dashboard"}, {"Release dashboard", "Release insight"}),
+            ({"dashboard_item": "insight"}, {"Release insight"}),
+            (
+                {"date_from": "2024-01-02", "date_to": "2024-01-02T23:59:59Z"},
+                {"Release insight"},
+            ),
+            (
+                {
+                    "search": "release",
+                    "scope": "dashboard_item",
+                    "dashboard_id": "dashboard",
+                    "dashboard_item": "insight",
+                    "date_from": "2024-01-02T12:00:00Z",
+                    "date_to": "2024-01-02T12:00:00Z",
+                },
+                {"Release insight"},
+            ),
+            ({"dashboard_id": "dashboard", "scope": "project"}, set()),
+            ({"search": "missing"}, set()),
+            (
+                {"search": "release", "hidden_in_user_interface": "false", "is_emoji": "false"},
+                {"Release project", "Release dashboard", "Release insight"},
+            ),
+            (
+                {"search": "release", "hidden_in_user_interface": "false", "is_emoji": "true"},
+                {"Release project", "Release dashboard", "Release insight"},
+            ),
+        ]
+    )
+    def test_summary_and_list_share_filters(self, query: dict[str, str], expected_contents: set[str]) -> None:
+        params = query.copy()
+        if "dashboard_id" in params:
+            params["dashboard_id"] = str(self.dashboard.pk)
+        if "dashboard_item" in params:
+            params["dashboard_item"] = str(self.insight.pk)
+        response = self.client.get(f"/api/projects/{self.team.id}/annotations/", params)
+        summary = self.client.get(f"/api/projects/{self.team.id}/annotations/summary/", params)
+
+        assert response.status_code == summary.status_code == status.HTTP_200_OK
+        assert {row["content"] for row in response.json()["results"]} == expected_contents
+        assert summary.json()["total"] == response.json()["count"] == len(expected_contents)
+        assert sum(summary.json()["scope_counts"].values()) == len(expected_contents)
+        assert sum(row["count"] for row in summary.json()["daily_counts"]) == len(expected_contents)
+
+    def test_summary_preserves_tenant_visibility_and_excludes_deleted_annotations(self) -> None:
+        other_team = Team.objects.create(organization=self.organization, name="Other project")
+        other_org, _, foreign_team = Organization.objects.bootstrap(None, name="Other organization")
+        for team, organization, scope, deleted in [
+            (other_team, self.organization, Annotation.Scope.PROJECT, False),
+            (other_team, self.organization, Annotation.Scope.ORGANIZATION, False),
+            (foreign_team, other_org, Annotation.Scope.ORGANIZATION, False),
+            (self.team, self.organization, Annotation.Scope.PROJECT, True),
+        ]:
+            Annotation.objects.create(
+                team=team,
+                organization=organization,
+                content="Release across projects",
+                scope=scope,
+                deleted=deleted,
+            )
+
+        summary = self.client.get(f"/api/projects/{self.team.id}/annotations/summary/")
+        assert summary.status_code == status.HTTP_200_OK
+        assert summary.json()["total"] == 5
+        assert summary.json()["scope_counts"]["organization"] == 1
+
+        denied = self.client.get(f"/api/projects/{foreign_team.id}/annotations/summary/")
+        assert denied.status_code == status.HTTP_403_FORBIDDEN
+
+    @parameterized.expand([(["annotation:read"], status.HTTP_200_OK), (["insight:read"], status.HTTP_403_FORBIDDEN)])
+    def test_summary_requires_annotation_read_scope(self, scopes: list[str], expected_status: int) -> None:
+        token = generate_random_token_personal()
+        PersonalAPIKey.objects.create(
+            label="Annotation summary test", user=self.user, secure_value=hash_key_value(token), scopes=scopes
+        )
+        response = self.client.get(
+            f"/api/projects/{self.team.id}/annotations/summary/", headers={"authorization": f"Bearer {token}"}
+        )
+        assert response.status_code == expected_status
+
+
+class TestAnnotationResourceFilters(SimpleTestCase):
+    @parameterized.expand(
+        [(field, value) for field in ("dashboard_id", "dashboard_item") for value in ("invalid", 0, -1)]
+    )
+    def test_invalid_resource_ids_are_rejected(self, field: str, value: str | int) -> None:
+        serializer = AnnotationResourceFilterSerializer(data={field: value})
+        assert not serializer.is_valid()
+        assert field in serializer.errors

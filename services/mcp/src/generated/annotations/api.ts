@@ -20,9 +20,18 @@ export const AnnotationsListParams = /* @__PURE__ */ zod.object({
 })
 
 export const AnnotationsListQueryParams = /* @__PURE__ */ zod.object({
+    dashboard_id: zod.number().min(1).optional().describe('Filter by associated dashboard ID.'),
+    dashboard_item: zod.number().min(1).optional().describe('Filter by associated insight ID.'),
+    date_from: zod.iso.datetime({ offset: true }).optional().describe('Inclusive start of the annotation date range.'),
+    date_to: zod.iso.datetime({ offset: true }).optional().describe('Inclusive end of the annotation date range.'),
+    hidden_in_user_interface: zod
+        .boolean()
+        .optional()
+        .describe('Set false to include only annotations visible in the UI. Omit to include hidden annotations too.'),
     limit: zod.number().optional().describe('Number of results to return per page.'),
     offset: zod.number().optional().describe('The initial index from which to return the results.'),
-    search: zod.string().optional().describe('A search term.'),
+    scope: zod.string().optional().describe("Filter by annotation scope. 'insight' is an alias for 'dashboard_item'."),
+    search: zod.string().optional().describe('Search annotation content.'),
 })
 
 /**
@@ -57,8 +66,8 @@ export const AnnotationsCreateBody = /* @__PURE__ */ zod.object({
         .describe(
             'Who created this annotation. Use `USR` for user-created notes and `GIT` for bot\/deployment notes.\n\n\* `USR` - user\n\* `GIT` - GitHub'
         ),
-    dashboard_item: zod.number().nullish(),
-    dashboard_id: zod.number().nullish(),
+    dashboard_item: zod.number().nullish().describe('Optional insight ID belonging to the current project.'),
+    dashboard_id: zod.number().nullish().describe('Optional dashboard ID belonging to the current project.'),
     deleted: zod
         .boolean()
         .optional()
@@ -130,8 +139,8 @@ export const AnnotationsPartialUpdateBody = /* @__PURE__ */ zod.object({
         .describe(
             'Who created this annotation. Use `USR` for user-created notes and `GIT` for bot\/deployment notes.\n\n\* `USR` - user\n\* `GIT` - GitHub'
         ),
-    dashboard_item: zod.number().nullish(),
-    dashboard_id: zod.number().nullish(),
+    dashboard_item: zod.number().nullish().describe('Optional insight ID belonging to the current project.'),
+    dashboard_id: zod.number().nullish().describe('Optional dashboard ID belonging to the current project.'),
     deleted: zod
         .boolean()
         .optional()
