@@ -1,0 +1,81 @@
+[
+    {
+        "content": "[Demo] Release: simplified signup form",
+        "scope": "project",
+        "emoji": "🚀",
+        "days_ago": 2
+    },
+    {
+        "content": "[Demo] Incident: delayed file uploads resolved",
+        "scope": "project",
+        "emoji": "🛠️",
+        "days_ago": 4
+    },
+    {
+        "content": "[Demo] Experiment: welcome checklist enabled",
+        "scope": "project",
+        "emoji": "🧪",
+        "days_ago": 6
+    },
+    {
+        "content": "[Demo] Release: faster file search",
+        "scope": "project",
+        "emoji": "🔎",
+        "days_ago": 9
+    },
+    {
+        "content": "[Demo] Campaign: autumn newsletter sent",
+        "scope": "project",
+        "emoji": "📣",
+        "days_ago": 12
+    },
+    {
+        "content": "[Demo] Release: new pricing page published",
+        "scope": "dashboard",
+        "dashboard_name": "💸 Revenue",
+        "emoji": "🚀",
+        "days_ago": 3
+    },
+    {
+        "content": "[Demo] Experiment: annual billing option introduced",
+        "scope": "dashboard",
+        "dashboard_name": "💸 Revenue",
+        "emoji": "🧪",
+        "days_ago": 10
+    },
+    {
+        "content": "[Demo] Campaign: homepage launch announcement",
+        "scope": "dashboard",
+        "dashboard_name": "🌐 Website",
+        "emoji": "📣",
+        "days_ago": 5
+    },
+    {
+        "content": "[Demo] Incident: analytics script restored",
+        "scope": "dashboard",
+        "dashboard_name": "🌐 Website",
+        "emoji": "🛠️",
+        "days_ago": 14
+    },
+    {
+        "content": "[Demo] Release: public file previews",
+        "scope": "dashboard_item",
+        "insight_name": "File interactions",
+        "emoji": "🚀",
+        "days_ago": 7
+    },
+    {
+        "content": "[Demo] Experiment: upload progress indicator",
+        "scope": "dashboard_item",
+        "insight_name": "File interactions",
+        "emoji": "🧪",
+        "days_ago": 16
+    },
+    {
+        "content": "[Demo] Campaign: documentation refresh",
+        "scope": "dashboard_item",
+        "insight_name": "Daily unique visitors over time",
+        "emoji": "📣",
+        "days_ago": 20
+    }
+]

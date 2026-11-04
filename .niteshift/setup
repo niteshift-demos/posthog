@@ -91,6 +91,9 @@ else
     echo "→ Demo account already seeded"
 fi
 
+echo "→ Seeding demo annotations"
+python manage.py shell --no-imports < .niteshift/files/seed-annotations.py
+
 # Seeds the dev personal API key and the feature flags local dev expects. Needs the demo user.
 echo "→ Bootstrapping local dev extras"
 bin/ensure-local-setup
