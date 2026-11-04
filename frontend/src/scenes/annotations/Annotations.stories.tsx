@@ -23,7 +23,23 @@ const meta: Meta = {
     decorators: [
         mswDecorator({
             get: {
-                '/api/projects/:team_id/annotations/': annotations,
+                '/api/projects/:team_id/annotations/': { ...annotations, count: annotations.results.length },
+                '/api/projects/:team_id/annotations/summary/': {
+                    total: annotations.results.length,
+                    scope_counts: {
+                        project: annotations.results.filter((annotation) => annotation.scope === 'project').length,
+                        organization: annotations.results.filter((annotation) => annotation.scope === 'organization')
+                            .length,
+                        dashboard: annotations.results.filter((annotation) => annotation.scope === 'dashboard').length,
+                        dashboard_item: annotations.results.filter(
+                            (annotation) => annotation.scope === 'dashboard_item'
+                        ).length,
+                        recording: 0,
+                    },
+                    daily_counts: [],
+                },
+                '/api/projects/:team_id/dashboards/': { results: [] },
+                '/api/projects/:team_id/insights/': { results: [] },
                 '/api/projects/:team_id/annotations/:annotationId/': ({ params }) => [
                     200,
                     annotations.results.find((r) => r.id === Number(params['annotationId'])),
@@ -38,6 +54,10 @@ type Story = StoryObj<{}>
 // The table renders the emoji next to the content for annotations that have one (see the fixture),
 // giving visual-regression coverage of the emoji display.
 export const Annotations: Story = {}
+
+export const Timeline: Story = {
+    parameters: { pageUrl: `${urls.annotations()}?view=timeline` },
+}
 
 const openNewAnnotationModal: Story['play'] = async ({ canvasElement }) => {
     const canvas = within(canvasElement)
