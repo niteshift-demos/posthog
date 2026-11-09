@@ -569,3 +569,16 @@ class ExperimentMetricsRecalculation(TeamScopedRootMixin, UUIDModel):
 
     def __str__(self):
         return f"ExperimentMetricsRecalculation(exp={self.experiment_id}, status={self.status}, total={self.total_metrics})"
+
+
+class ExperimentAnnotation(TeamScopedRootMixin):
+    team = models.ForeignKey("posthog.Team", on_delete=models.CASCADE, db_constraint=False)
+    experiment = models.ForeignKey(Experiment, on_delete=models.CASCADE, related_name="annotations")
+    variant_key = models.CharField(max_length=400)
+    content = models.TextField()
+    created_by = models.ForeignKey("posthog.User", on_delete=models.SET_NULL, null=True, db_constraint=False)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now, editable=False)
+
+    class Meta:
+        indexes = [models.Index(fields=["team", "experiment", "-created_at"], name="experiment_annotation_list_idx")]
