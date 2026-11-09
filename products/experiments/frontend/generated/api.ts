@@ -14,6 +14,7 @@ import type {
     CopyExperimentToProjectApi,
     CreateFromPromptInputApi,
     EndExperimentApi,
+    ExperimentAnnotationApi,
     ExperimentApi,
     ExperimentFlagCleanupTargetApi,
     ExperimentFlagCleanupTaskApi,
@@ -37,6 +38,7 @@ import type {
     PaginatedExperimentBasicListApi,
     PaginatedExperimentHoldoutListApi,
     PaginatedExperimentSavedMetricListApi,
+    PatchedExperimentAnnotationApi,
     PatchedExperimentHoldoutApi,
     PatchedExperimentSavedMetricApi,
     PatchedExperimentWriteApi,
@@ -330,6 +332,105 @@ export const experimentsCreate = async (
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...options?.headers },
         body: JSON.stringify(experimentWriteApi),
+    })
+}
+
+export const getExperimentsAnnotationsListUrl = (projectId: string, experimentId: number) => {
+    return `/api/projects/${projectId}/experiments/${experimentId}/annotations/`
+}
+
+/**
+ * List variant annotations for an experiment.
+ */
+export const experimentsAnnotationsList = async (
+    projectId: string,
+    experimentId: number,
+    options?: RequestInit
+): Promise<ExperimentAnnotationApi[]> => {
+    return apiMutator<ExperimentAnnotationApi[]>(getExperimentsAnnotationsListUrl(projectId, experimentId), {
+        ...options,
+        method: 'GET',
+    })
+}
+
+export const getExperimentsAnnotationsCreateUrl = (projectId: string, experimentId: number) => {
+    return `/api/projects/${projectId}/experiments/${experimentId}/annotations/`
+}
+
+/**
+ * Add an annotation to an experiment variant.
+ */
+export const experimentsAnnotationsCreate = async (
+    projectId: string,
+    experimentId: number,
+    experimentAnnotationApi: NonReadonly<ExperimentAnnotationApi>,
+    options?: RequestInit
+): Promise<ExperimentAnnotationApi> => {
+    return apiMutator<ExperimentAnnotationApi>(getExperimentsAnnotationsCreateUrl(projectId, experimentId), {
+        ...options,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(experimentAnnotationApi),
+    })
+}
+
+export const getExperimentsAnnotationsRetrieveUrl = (projectId: string, experimentId: number, id: number) => {
+    return `/api/projects/${projectId}/experiments/${experimentId}/annotations/${id}/`
+}
+
+/**
+ * Retrieve an experiment variant annotation.
+ */
+export const experimentsAnnotationsRetrieve = async (
+    projectId: string,
+    experimentId: number,
+    id: number,
+    options?: RequestInit
+): Promise<ExperimentAnnotationApi> => {
+    return apiMutator<ExperimentAnnotationApi>(getExperimentsAnnotationsRetrieveUrl(projectId, experimentId, id), {
+        ...options,
+        method: 'GET',
+    })
+}
+
+export const getExperimentsAnnotationsPartialUpdateUrl = (projectId: string, experimentId: number, id: number) => {
+    return `/api/projects/${projectId}/experiments/${experimentId}/annotations/${id}/`
+}
+
+/**
+ * Edit an experiment variant annotation.
+ */
+export const experimentsAnnotationsPartialUpdate = async (
+    projectId: string,
+    experimentId: number,
+    id: number,
+    patchedExperimentAnnotationApi?: NonReadonly<PatchedExperimentAnnotationApi>,
+    options?: RequestInit
+): Promise<ExperimentAnnotationApi> => {
+    return apiMutator<ExperimentAnnotationApi>(getExperimentsAnnotationsPartialUpdateUrl(projectId, experimentId, id), {
+        ...options,
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(patchedExperimentAnnotationApi),
+    })
+}
+
+export const getExperimentsAnnotationsDestroyUrl = (projectId: string, experimentId: number, id: number) => {
+    return `/api/projects/${projectId}/experiments/${experimentId}/annotations/${id}/`
+}
+
+/**
+ * Delete an experiment variant annotation.
+ */
+export const experimentsAnnotationsDestroy = async (
+    projectId: string,
+    experimentId: number,
+    id: number,
+    options?: RequestInit
+): Promise<void> => {
+    return apiMutator<void>(getExperimentsAnnotationsDestroyUrl(projectId, experimentId, id), {
+        ...options,
+        method: 'DELETE',
     })
 }
 

@@ -12,6 +12,8 @@ import { SceneContent } from '~/layout/scenes/components/SceneContent'
 import { LegacyExperimentView } from '~/scenes/experiments/legacy'
 import { ActivityScope } from '~/types'
 
+import { ExperimentAnnotations } from 'products/experiments/frontend/annotations/ExperimentAnnotations'
+
 import { EmptyMetricsPanel } from '../ExperimentForm/MetricsPanel/EmptyMetricsPanel'
 import { ExperimentImplementationDetails } from '../ExperimentImplementationDetails'
 import { experimentLogic } from '../experimentLogic'
@@ -74,6 +76,7 @@ const MetricsTab = (): JSX.Element => {
                     <Metrics isSecondary={true} />
                 </>
             )}
+            <ExperimentAnnotations />
         </>
     )
 }

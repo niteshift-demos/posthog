@@ -878,6 +878,44 @@ export const ExperimentsCreateBody = /* @__PURE__ */ zod
     .describe('Deep\/recursive schema (opaque in Zod — use TypeScript types for full shape)')
 
 /**
+ * Add an annotation to an experiment variant.
+ */
+export const experimentsAnnotationsCreateBodyVariantKeyMax = 400
+
+export const experimentsAnnotationsCreateBodyContentMax = 10000
+
+export const ExperimentsAnnotationsCreateBody = /* @__PURE__ */ zod.object({
+    variant_key: zod
+        .string()
+        .max(experimentsAnnotationsCreateBodyVariantKeyMax)
+        .describe('Key of a variant belonging to this experiment.'),
+    content: zod
+        .string()
+        .max(experimentsAnnotationsCreateBodyContentMax)
+        .describe('Annotation text, up to 10,000 characters.'),
+})
+
+/**
+ * Edit an experiment variant annotation.
+ */
+export const experimentsAnnotationsPartialUpdateBodyVariantKeyMax = 400
+
+export const experimentsAnnotationsPartialUpdateBodyContentMax = 10000
+
+export const ExperimentsAnnotationsPartialUpdateBody = /* @__PURE__ */ zod.object({
+    variant_key: zod
+        .string()
+        .max(experimentsAnnotationsPartialUpdateBodyVariantKeyMax)
+        .optional()
+        .describe('Key of a variant belonging to this experiment.'),
+    content: zod
+        .string()
+        .max(experimentsAnnotationsPartialUpdateBodyContentMax)
+        .optional()
+        .describe('Annotation text, up to 10,000 characters.'),
+})
+
+/**
  * Mixin for ViewSets to handle approval-gate exceptions raised from decorated serializers.
  *
  * Intercepts ApprovalRequired (409) and PolicyConflict (400) raised by the @approval_gate
