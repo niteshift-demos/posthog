@@ -877,6 +877,53 @@ export const ExperimentsCreateBody = /* @__PURE__ */ zod
     .record(zod.string(), zod.unknown())
     .describe('Deep\/recursive schema (opaque in Zod — use TypeScript types for full shape)')
 
+export const experimentsAnnotationsCreateBodyVariantKeyMax = 400
+
+export const experimentsAnnotationsCreateBodyContentMax = 8192
+
+export const ExperimentsAnnotationsCreateBody = /* @__PURE__ */ zod.object({
+    variant_key: zod
+        .string()
+        .max(experimentsAnnotationsCreateBodyVariantKeyMax)
+        .describe('The key of a variant belonging to this experiment.'),
+    content: zod
+        .string()
+        .max(experimentsAnnotationsCreateBodyContentMax)
+        .describe('The annotation text. Cannot be empty.'),
+})
+
+export const experimentsAnnotationsUpdateBodyVariantKeyMax = 400
+
+export const experimentsAnnotationsUpdateBodyContentMax = 8192
+
+export const ExperimentsAnnotationsUpdateBody = /* @__PURE__ */ zod.object({
+    variant_key: zod
+        .string()
+        .max(experimentsAnnotationsUpdateBodyVariantKeyMax)
+        .describe('The key of a variant belonging to this experiment.'),
+    content: zod
+        .string()
+        .max(experimentsAnnotationsUpdateBodyContentMax)
+        .describe('The annotation text. Cannot be empty.'),
+})
+
+export const experimentsAnnotationsPartialUpdateBodyVariantKeyMax = 400
+
+export const experimentsAnnotationsPartialUpdateBodyContentMax = 8192
+
+export const ExperimentsAnnotationsPartialUpdateBody = /* @__PURE__ */ zod.object({
+    variant_key: zod
+        .string()
+        .max(experimentsAnnotationsPartialUpdateBodyVariantKeyMax)
+        .optional()
+        .describe('The key of a variant belonging to this experiment.'),
+    content: zod
+        .string()
+        .max(experimentsAnnotationsPartialUpdateBodyContentMax)
+        .optional()
+        .describe('The annotation text. Cannot be empty.'),
+})
+
 /**
  * Mixin for ViewSets to handle approval-gate exceptions raised from decorated serializers.
  *

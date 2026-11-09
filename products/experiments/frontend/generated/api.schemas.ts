@@ -1654,6 +1654,52 @@ export interface ExperimentApi {
     readonly user_access_level: string | null
 }
 
+export interface ExperimentAnnotationApi {
+    /** The annotation ID. */
+    readonly id: number
+    /** The experiment ID. */
+    readonly experiment: number
+    /**
+     * The key of a variant belonging to this experiment.
+     * @maxLength 400
+     */
+    variant_key: string
+    /**
+     * The annotation text. Cannot be empty.
+     * @maxLength 8192
+     */
+    content: string
+    /** The author of the annotation. */
+    readonly created_by: UserBasicApi | null
+    /** When the annotation was created. */
+    readonly created_at: string
+    /** When the annotation was last updated. */
+    readonly updated_at: string
+}
+
+export interface PatchedExperimentAnnotationApi {
+    /** The annotation ID. */
+    readonly id?: number
+    /** The experiment ID. */
+    readonly experiment?: number
+    /**
+     * The key of a variant belonging to this experiment.
+     * @maxLength 400
+     */
+    variant_key?: string
+    /**
+     * The annotation text. Cannot be empty.
+     * @maxLength 8192
+     */
+    content?: string
+    /** The author of the annotation. */
+    readonly created_by?: UserBasicApi | null
+    /** When the annotation was created. */
+    readonly created_at?: string
+    /** When the annotation was last updated. */
+    readonly updated_at?: string
+}
+
 /**
  * The experiment state as the client last read it, used together with `version` to resolve concurrent edits: metric collections merge per metric uuid, and any other field the update carries merges per field against its base value here (only a same-field double edit fails). Relevant keys are metrics, metrics_secondary, saved_metrics_ids, plus the last-read values of whichever scalar fields the update writes; unknown keys are ignored. Changed fields without a base value — and, without this object, any version mismatch — fail with HTTP 409.
  * @nullable

@@ -9,11 +9,18 @@ def register_routes(routers: RouterRegistry) -> None:
     if not EE_AVAILABLE:
         return
 
+    from products.experiments.backend.presentation.annotations import ExperimentAnnotationViewSet
     from products.experiments.backend.presentation.views import EnterpriseExperimentsViewSet
 
     from ee.clickhouse.views.experiment_holdouts import ExperimentHoldoutViewSet
     from ee.clickhouse.views.experiment_saved_metrics import ExperimentSavedMetricViewSet
 
+    routers.projects.register(
+        r"experiments/(?P<experiment_id>[0-9]+)/annotations",
+        ExperimentAnnotationViewSet,
+        "project_experiment_annotations",
+        ["project_id"],
+    )
     routers.projects.register(r"experiments", EnterpriseExperimentsViewSet, "project_experiments", ["project_id"])
     routers.projects.register(
         r"experiment_holdouts", ExperimentHoldoutViewSet, "project_experiment_holdouts", ["project_id"]
