@@ -32918,6 +32918,27 @@ export namespace Schemas {
       readonly user_access_level: string | null;
     }
 
+    export interface ExperimentAnnotation {
+      /** Identifier of this experiment annotation. */
+      readonly id: number;
+      /**
+         * Key of a variant belonging to this experiment.
+         * @maxLength 400
+         */
+      variant_key: string;
+      /**
+         * Plain-text note about the selected variant.
+         * @maxLength 8192
+         */
+      content: string;
+      /** Author of the annotation. */
+      readonly created_by: UserBasic | null;
+      /** Time the annotation was created. */
+      readonly created_at: string;
+      /** Time the annotation was last edited. */
+      readonly updated_at: string;
+    }
+
     /**
      * Lightweight, read-only serializer for the experiment list endpoint.
      *
@@ -59053,6 +59074,27 @@ export namespace Schemas {
       readonly created_by?: number | null;
       /** @nullable */
       readonly updated_at?: string | null;
+    }
+
+    export interface PatchedExperimentAnnotation {
+      /** Identifier of this experiment annotation. */
+      readonly id?: number;
+      /**
+         * Key of a variant belonging to this experiment.
+         * @maxLength 400
+         */
+      variant_key?: string;
+      /**
+         * Plain-text note about the selected variant.
+         * @maxLength 8192
+         */
+      content?: string;
+      /** Author of the annotation. */
+      readonly created_by?: UserBasic | null;
+      /** Time the annotation was created. */
+      readonly created_at?: string;
+      /** Time the annotation was last edited. */
+      readonly updated_at?: string;
     }
 
     /**

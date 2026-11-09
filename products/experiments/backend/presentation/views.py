@@ -21,6 +21,7 @@ from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_sche
 from opentelemetry import trace
 from rest_framework import serializers, viewsets
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.generics import get_object_or_404
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -61,11 +62,13 @@ from products.experiments.backend.llm_metric_templates import build_template, li
 from products.experiments.backend.models.experiment import (
     LEGACY_METRIC_KINDS,
     Experiment,
+    ExperimentAnnotation,
     ExperimentMetricsRecalculation,
     ExperimentTimeseriesRecalculation,
     ExperimentToSavedMetric,
     experiment_has_legacy_metrics,
 )
+from products.experiments.backend.presentation.annotations import ExperimentAnnotationSerializer
 from products.experiments.backend.presentation.serializers import (
     ArchiveExperimentSerializer,
     CopyExperimentToProjectSerializer,
@@ -390,6 +393,47 @@ class EnterpriseExperimentsViewSet(
     )
     ordering = "-created_at"
 
+    @extend_schema(responses=ExperimentAnnotationSerializer(many=True))
+    @action(methods=["GET"], detail=True, pagination_class=None)
+    def annotations(self, request: Request, **kwargs: Any) -> Response:
+        experiment = self.get_object()
+        annotations = ExperimentAnnotation.objects.filter(experiment=experiment).select_related("created_by")
+        return Response(ExperimentAnnotationSerializer(annotations, many=True).data)
+
+    @annotations.mapping.post
+    @extend_schema(request=ExperimentAnnotationSerializer, responses={201: ExperimentAnnotationSerializer})
+    def create_annotation(self, request: Request, **kwargs: Any) -> Response:
+        experiment = self.get_object()
+        serializer = ExperimentAnnotationSerializer(
+            data=request.data, context={**self.get_serializer_context(), "experiment": experiment}
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save(experiment=experiment, team=self.team, created_by=request.user)
+        return Response(serializer.data, status=201)
+
+    @extend_schema(request=ExperimentAnnotationSerializer, responses=ExperimentAnnotationSerializer)
+    @action(methods=["PATCH"], detail=True, url_path=r"annotations/(?P<annotation_id>[0-9]+)")
+    def update_annotation(self, request: Request, annotation_id: str, **kwargs: Any) -> Response:
+        experiment = self.get_object()
+        annotation = get_object_or_404(ExperimentAnnotation.objects, experiment=experiment, pk=annotation_id)
+        serializer = ExperimentAnnotationSerializer(
+            annotation,
+            data=request.data,
+            partial=True,
+            context={**self.get_serializer_context(), "experiment": experiment},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @update_annotation.mapping.delete
+    @extend_schema(request=None, responses={204: None})
+    def delete_annotation(self, request: Request, annotation_id: str, **kwargs: Any) -> Response:
+        experiment = self.get_object()
+        annotation = get_object_or_404(ExperimentAnnotation.objects, experiment=experiment, pk=annotation_id)
+        annotation.delete()
+        return Response(status=204)
+
     def get_serializer_class(self):
         # The list view renders only scalar/flag fields; use the lightweight serializer so the
         # heavy metric fields (and their prefetch/fingerprinting) are skipped — see safely_get_queryset.
@@ -432,6 +476,10 @@ class EnterpriseExperimentsViewSet(
         )
 
     def dangerously_get_required_scopes(self, request: Request, view: Any) -> RequiredScopes | None:
+        if self.action == "annotations":
+            return ["experiment:read"]
+        if self.action in ("create_annotation", "update_annotation", "delete_annotation"):
+            return ["experiment:write"]
         # Archiving with disable_feature_flag=true also disables and archives the linked flag,
         # which is a feature_flag write — require feature_flag:write on the token, not just
         # experiment:write. Other actions fall back to their own scopes.

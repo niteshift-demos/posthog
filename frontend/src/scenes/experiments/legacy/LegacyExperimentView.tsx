@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 
 import { LemonBanner, LemonTab, LemonTabs } from '@posthog/lemon-ui'
 
+import { userHasAccess } from 'lib/utils/accessControlUtils'
 import { PendingChangeRequestBanner } from 'scenes/approvals/PendingChangeRequestBanner'
 
 import { SceneContent } from '~/layout/scenes/components/SceneContent'
@@ -22,7 +23,9 @@ import {
     LegacyResultsQuery,
     LegacyExploreButton,
 } from '~/scenes/experiments/legacy'
-import { Experiment } from '~/types'
+import { AccessControlLevel, AccessControlResourceType, Experiment } from '~/types'
+
+import { ExperimentAnnotations } from 'products/experiments/frontend/annotations/ExperimentAnnotations'
 
 import { experimentLogic } from '../experimentLogic'
 import { DEFAULT_EXPERIMENT_TAB, type ExperimentTab, experimentSceneLogic } from '../experimentSceneLogic'
@@ -31,6 +34,7 @@ import { ExperimentWarningBanner } from '../ExperimentView/ExperimentWarningBann
 import { LoadingState } from '../ExperimentView/LoadingState'
 import { PageHeaderCustom } from '../ExperimentView/PageHeader'
 import { ReleaseConditionsModal, ReleaseConditionsTable } from '../ExperimentView/ReleaseConditionsTable'
+import { getExperimentVariants } from '../utils'
 
 const getFirstPrimaryMetric = (experiment: Experiment): ExperimentTrendsQuery | ExperimentFunnelsQuery | null => {
     if (experiment.metrics.length) {
@@ -106,6 +110,17 @@ const LegacyMetricsTab = (): JSX.Element => {
                 </>
             )}
             <LegacyMetricsView isSecondary={true} />
+            {typeof experiment.id === 'number' && (
+                <ExperimentAnnotations
+                    experimentId={experiment.id}
+                    variants={getExperimentVariants(experiment).map(({ key }) => key)}
+                    canEdit={userHasAccess(
+                        AccessControlResourceType.Experiment,
+                        AccessControlLevel.Editor,
+                        experiment.user_access_level
+                    )}
+                />
+            )}
         </>
     )
 }

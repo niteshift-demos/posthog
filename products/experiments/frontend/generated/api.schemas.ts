@@ -1854,6 +1854,48 @@ export interface ActivityLogPaginatedResponseApi {
     total_count: number
 }
 
+export interface ExperimentAnnotationApi {
+    /** Identifier of this experiment annotation. */
+    readonly id: number
+    /**
+     * Key of a variant belonging to this experiment.
+     * @maxLength 400
+     */
+    variant_key: string
+    /**
+     * Plain-text note about the selected variant.
+     * @maxLength 8192
+     */
+    content: string
+    /** Author of the annotation. */
+    readonly created_by: UserBasicApi | null
+    /** Time the annotation was created. */
+    readonly created_at: string
+    /** Time the annotation was last edited. */
+    readonly updated_at: string
+}
+
+export interface PatchedExperimentAnnotationApi {
+    /** Identifier of this experiment annotation. */
+    readonly id?: number
+    /**
+     * Key of a variant belonging to this experiment.
+     * @maxLength 400
+     */
+    variant_key?: string
+    /**
+     * Plain-text note about the selected variant.
+     * @maxLength 8192
+     */
+    content?: string
+    /** Author of the annotation. */
+    readonly created_by?: UserBasicApi | null
+    /** Time the annotation was created. */
+    readonly created_at?: string
+    /** Time the annotation was last edited. */
+    readonly updated_at?: string
+}
+
 export interface ArchiveExperimentApi {
     /** When the linked feature flag is still enabled, also disable and archive it along with the experiment. Has no effect if the flag is already disabled (it is archived either way). */
     disable_feature_flag?: boolean

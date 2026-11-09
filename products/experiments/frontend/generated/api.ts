@@ -14,6 +14,7 @@ import type {
     CopyExperimentToProjectApi,
     CreateFromPromptInputApi,
     EndExperimentApi,
+    ExperimentAnnotationApi,
     ExperimentApi,
     ExperimentFlagCleanupTargetApi,
     ExperimentFlagCleanupTaskApi,
@@ -37,6 +38,7 @@ import type {
     PaginatedExperimentBasicListApi,
     PaginatedExperimentHoldoutListApi,
     PaginatedExperimentSavedMetricListApi,
+    PatchedExperimentAnnotationApi,
     PatchedExperimentHoldoutApi,
     PatchedExperimentSavedMetricApi,
     PatchedExperimentWriteApi,
@@ -447,6 +449,102 @@ export const experimentsActivityRetrieve = async (
     return apiMutator<ActivityLogPaginatedResponseApi>(getExperimentsActivityRetrieveUrl(projectId, id, params), {
         ...options,
         method: 'GET',
+    })
+}
+
+export const getExperimentsAnnotationsListUrl = (projectId: string, id: number) => {
+    return `/api/projects/${projectId}/experiments/${id}/annotations/`
+}
+
+/**
+ * Mixin for ViewSets to handle approval-gate exceptions raised from decorated serializers.
+ *
+ * Intercepts ApprovalRequired (409) and PolicyConflict (400) raised by the @approval_gate
+ * decorator on serializer methods and converts them into the same responses the viewset path
+ * produces (see decorators._result_to_response), so both paths share one contract.
+ */
+export const experimentsAnnotationsList = async (
+    projectId: string,
+    id: number,
+    options?: RequestInit
+): Promise<ExperimentAnnotationApi[]> => {
+    return apiMutator<ExperimentAnnotationApi[]>(getExperimentsAnnotationsListUrl(projectId, id), {
+        ...options,
+        method: 'GET',
+    })
+}
+
+export const getExperimentsAnnotationsCreateUrl = (projectId: string, id: number) => {
+    return `/api/projects/${projectId}/experiments/${id}/annotations/`
+}
+
+/**
+ * Mixin for ViewSets to handle approval-gate exceptions raised from decorated serializers.
+ *
+ * Intercepts ApprovalRequired (409) and PolicyConflict (400) raised by the @approval_gate
+ * decorator on serializer methods and converts them into the same responses the viewset path
+ * produces (see decorators._result_to_response), so both paths share one contract.
+ */
+export const experimentsAnnotationsCreate = async (
+    projectId: string,
+    id: number,
+    experimentAnnotationApi: NonReadonly<ExperimentAnnotationApi>,
+    options?: RequestInit
+): Promise<ExperimentAnnotationApi> => {
+    return apiMutator<ExperimentAnnotationApi>(getExperimentsAnnotationsCreateUrl(projectId, id), {
+        ...options,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(experimentAnnotationApi),
+    })
+}
+
+export const getExperimentsAnnotationsPartialUpdateUrl = (projectId: string, id: number, annotationId: string) => {
+    return `/api/projects/${projectId}/experiments/${id}/annotations/${annotationId}/`
+}
+
+/**
+ * Mixin for ViewSets to handle approval-gate exceptions raised from decorated serializers.
+ *
+ * Intercepts ApprovalRequired (409) and PolicyConflict (400) raised by the @approval_gate
+ * decorator on serializer methods and converts them into the same responses the viewset path
+ * produces (see decorators._result_to_response), so both paths share one contract.
+ */
+export const experimentsAnnotationsPartialUpdate = async (
+    projectId: string,
+    id: number,
+    annotationId: string,
+    patchedExperimentAnnotationApi?: NonReadonly<PatchedExperimentAnnotationApi>,
+    options?: RequestInit
+): Promise<ExperimentAnnotationApi> => {
+    return apiMutator<ExperimentAnnotationApi>(getExperimentsAnnotationsPartialUpdateUrl(projectId, id, annotationId), {
+        ...options,
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(patchedExperimentAnnotationApi),
+    })
+}
+
+export const getExperimentsAnnotationsDestroyUrl = (projectId: string, id: number, annotationId: string) => {
+    return `/api/projects/${projectId}/experiments/${id}/annotations/${annotationId}/`
+}
+
+/**
+ * Mixin for ViewSets to handle approval-gate exceptions raised from decorated serializers.
+ *
+ * Intercepts ApprovalRequired (409) and PolicyConflict (400) raised by the @approval_gate
+ * decorator on serializer methods and converts them into the same responses the viewset path
+ * produces (see decorators._result_to_response), so both paths share one contract.
+ */
+export const experimentsAnnotationsDestroy = async (
+    projectId: string,
+    id: number,
+    annotationId: string,
+    options?: RequestInit
+): Promise<void> => {
+    return apiMutator<void>(getExperimentsAnnotationsDestroyUrl(projectId, id, annotationId), {
+        ...options,
+        method: 'DELETE',
     })
 }
 

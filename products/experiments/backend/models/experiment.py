@@ -372,6 +372,24 @@ def saved_metric_has_legacy_query(saved_metric: "ExperimentSavedMetric") -> bool
     return saved_metric.query.get("kind") in LEGACY_METRIC_KINDS if saved_metric.query else False
 
 
+class ExperimentAnnotation(TeamScopedRootMixin, models.Model):
+    team = models.ForeignKey("posthog.Team", on_delete=models.CASCADE, db_constraint=False)
+    experiment = models.ForeignKey("Experiment", on_delete=models.CASCADE, related_name="annotations")
+    variant_key = models.CharField(max_length=400)
+    content = models.TextField(max_length=8192)
+    created_by = models.ForeignKey("posthog.User", on_delete=models.SET_NULL, null=True, db_constraint=False)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["team", "experiment", "-created_at"])]
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        self.updated_at = self.created_at if self._state.adding else timezone.now()
+        super().save(*args, **kwargs)
+
+
 class ExperimentHoldout(ModelActivityMixin, RootTeamMixin, models.Model):
     name = models.CharField(max_length=400)
     description = models.CharField(max_length=400, null=True, blank=True)
