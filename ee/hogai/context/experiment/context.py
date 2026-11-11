@@ -1,3 +1,8 @@
+import json
+
+from django.db.models import F, Window
+from django.db.models.functions import RowNumber, Substr
+
 from posthog.schema import MaxExperimentMetricResult
 
 from posthog.models import Team
@@ -6,6 +11,7 @@ from posthog.sync import database_sync_to_async
 from products.experiments.backend.facade.contracts import MAX_METRICS_TO_SUMMARIZE
 from products.experiments.backend.hogql_queries.utils import get_experiment_stats_method
 from products.experiments.backend.models.experiment import Experiment
+from products.experiments.backend.models.experiment_variant_annotation import ExperimentVariantAnnotation
 
 from .prompts import (
     EXPERIMENT_CONCLUSION_COMMENT_TEMPLATE,
@@ -14,8 +20,14 @@ from .prompts import (
     EXPERIMENT_DATES_TEMPLATE,
     EXPERIMENT_FEATURE_FLAG_VARIANTS_TEMPLATE,
     EXPERIMENT_NOT_FOUND_TEMPLATE,
+    EXPERIMENT_VARIANT_NOTES_TEMPLATE,
     EXPERIMENT_VARIANTS_TEMPLATE,
 )
+
+MAX_VARIANT_NOTES_PER_VARIANT = 3
+MAX_VARIANT_NOTES = 20
+MAX_VARIANT_NOTE_CONTENT_CHARS = 500
+MAX_VARIANT_NOTES_SECTION_CHARS = 12000
 
 
 class ExperimentContext:
@@ -65,6 +77,40 @@ class ExperimentContext:
             return "Running"
         else:
             return "Completed"
+
+    def _format_variant_notes(self, experiment: Experiment) -> str:
+        notes = (
+            ExperimentVariantAnnotation.objects.for_team(self._team.id)
+            .filter(experiment_id=experiment.id, experiment__team_id=self._team.id)
+            .annotate(
+                variant_note_rank=Window(
+                    expression=RowNumber(),
+                    partition_by=[F("variant_key")],
+                    order_by=[F("created_at").desc(), F("id").desc()],
+                ),
+                bounded_content=Substr("content", 1, MAX_VARIANT_NOTE_CONTENT_CHARS),
+            )
+            .filter(variant_note_rank__lte=MAX_VARIANT_NOTES_PER_VARIANT)
+            .order_by("-created_at", "-id")
+            .values_list("variant_key", "bounded_content", "created_by__first_name", "created_at")[:MAX_VARIANT_NOTES]
+        )
+        lines: list[str] = []
+        section_length = len(EXPERIMENT_VARIANT_NOTES_TEMPLATE.format(notes=""))
+        for variant_key, content, first_name, created_at in notes:
+            line = json.dumps(
+                {
+                    "variant_key": variant_key[:400],
+                    "content": content,
+                    "author_first_name": (first_name or "Unknown")[:150],
+                    "date": created_at.date().isoformat(),
+                },
+                ensure_ascii=False,
+            )
+            if section_length + len(line) + 1 > MAX_VARIANT_NOTES_SECTION_CHARS:
+                break
+            lines.append(line)
+            section_length += len(line) + 1
+        return EXPERIMENT_VARIANT_NOTES_TEMPLATE.format(notes="\n".join(lines)) if lines else ""
 
     @database_sync_to_async
     def format_experiment(self, experiment: Experiment) -> str:
@@ -116,6 +162,7 @@ class ExperimentContext:
             experiment_status=self._get_experiment_status(experiment),
             dates_section=dates_section,
             conclusion_section=conclusion_section,
+            variant_notes_section=self._format_variant_notes(experiment),
             variants_section=variants_section,
             feature_flag_variants_section=feature_flag_variants_section,
             experiment_created_at=experiment.created_at.isoformat() if experiment.created_at else "Unknown",
@@ -145,6 +192,10 @@ class ExperimentContext:
 
         if variants:
             lines.append(f"\n**Variants:** {', '.join(variants)}")
+
+        variant_notes = self._format_variant_notes(experiment)
+        if variant_notes:
+            lines.append(f"\n{variant_notes}")
 
         if exposures:
             lines.append("\n### Exposures")
