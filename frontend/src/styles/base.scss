@@ -440,7 +440,7 @@
     // Backgrounds
     // Behind surfaces, large areas: app scenes, etc.
     // //////////////////////////////////////////////////////////
-    --color-bg-primary: var(--color-posthog-3000-50);
+    --color-bg-primary: var(--color-orange-300);
 
     /* Most prominent/used background (replaces --color-bg-3000) */
     --color-bg-surface-primary: var(--color-white);
@@ -964,7 +964,7 @@
 
     // Backgrounds (dark mode)
     // //////////////////////////////////////////////////////////
-    --color-bg-primary: var(--color-neutral-cool-950);
+    --color-bg-primary: var(--color-orange-950);
     --color-bg-surface-primary: var(--color-neutral-cool-850);
     --color-bg-surface-secondary: var(--color-neutral-cool-900);
     --color-bg-surface-tertiary: var(--color-neutral-cool-950);
