@@ -1,4 +1,9 @@
+from datetime import timedelta
+from urllib.parse import urlsplit
+
 from posthog.test.base import APIBaseTest
+
+from django.utils import timezone
 
 from parameterized import parameterized
 from rest_framework import status
@@ -60,6 +65,62 @@ class TestExperimentVariantAnnotationsAPI(APIBaseTest):
         own = self.client.get(self._url(self.experiment.id)).json()["results"]
         assert [a["id"] for a in own] == [created["id"]]
         assert self.client.get(self._url(sibling.id)).json()["results"] == []
+
+    @parameterized.expand([(0,), (20,), (25,), (41,)])
+    def test_pagination_reaches_every_note_in_creation_order(self, count: int) -> None:
+        notes = ExperimentVariantAnnotation.objects.bulk_create(
+            [
+                ExperimentVariantAnnotation(
+                    experiment=self.experiment, team=self.team, created_by=self.user, variant_key="test", content=str(i)
+                )
+                for i in range(count)
+            ]
+        )
+        tied_time = timezone.now()
+        ExperimentVariantAnnotation.objects.filter(experiment=self.experiment).update(created_at=tied_time)
+        if notes:
+            ExperimentVariantAnnotation.objects.filter(id=notes[0].id).update(
+                created_at=tied_time + timedelta(seconds=1)
+            )
+        expected = list(
+            ExperimentVariantAnnotation.objects.filter(experiment=self.experiment)
+            .order_by("-created_at", "-id")
+            .values_list("id", flat=True)
+        )
+        next_url = self._url(self.experiment.id)
+        loaded: list[str] = []
+        while next_url:
+            response = self.client.get(next_url)
+            assert response.status_code == status.HTTP_200_OK
+            page = response.json()
+            assert len(page["results"]) == min(20, count - len(loaded))
+            loaded.extend(note["id"] for note in page["results"])
+            next_url = page["next"]
+        assert loaded == [str(id) for id in expected]
+
+    def test_cursor_survives_inserts_edits_and_deletion_of_tied_boundary(self) -> None:
+        notes = [self._create(content=str(i)) for i in range(5)]
+        ExperimentVariantAnnotation.objects.filter(experiment=self.experiment).update(created_at=timezone.now())
+        first_page = self.client.get(self._url(self.experiment.id), {"limit": 2}).json()
+        first_ids = [note["id"] for note in first_page["results"]]
+        remaining = sorted([note["id"] for note in notes if note["id"] not in first_ids], reverse=True)
+        self._create(content="Inserted after the first page")
+        self.client.delete(self._url(self.experiment.id, first_ids[-1]))
+        self.client.patch(self._url(self.experiment.id, remaining[0]), {"content": "Edited"}, format="json")
+        loaded: list[str] = []
+        next_url = first_page["next"]
+        while next_url:
+            parsed = urlsplit(next_url)
+            response = self.client.get(f"{parsed.path}?{parsed.query}")
+            assert response.status_code == status.HTTP_200_OK
+            page = response.json()
+            loaded.extend(note["id"] for note in page["results"])
+            next_url = page["next"]
+        assert loaded == remaining
+
+    def test_invalid_cursor_is_rejected(self) -> None:
+        response = self.client.get(self._url(self.experiment.id), {"cursor": "invalid"})
+        assert response.status_code == status.HTTP_404_NOT_FOUND
 
     @parameterized.expand([("create",), ("update",)])
     def test_unknown_variant_key_is_rejected(self, action: str) -> None:
