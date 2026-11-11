@@ -878,7 +878,7 @@ export const ExperimentsCreateBody = /* @__PURE__ */ zod
     .describe('Deep\/recursive schema (opaque in Zod — use TypeScript types for full shape)')
 
 /**
- * Notes pinned to individual variants of an experiment, kept separate from its recorded conclusion.
+ * Add a note to an existing feature flag variant of this experiment. Requires edit access to the experiment. The authenticated user becomes the author.
  */
 export const experimentsVariantAnnotationsCreateBodyVariantKeyMax = 400
 
@@ -893,8 +893,11 @@ export const ExperimentsVariantAnnotationsCreateBody = /* @__PURE__ */ zod.objec
         ),
     content: zod
         .string()
+        .min(1)
         .max(experimentsVariantAnnotationsCreateBodyContentMax)
-        .describe("The note text, e.g. 'Shipped this variant after reviewing the results'."),
+        .describe(
+            'Non-empty note text, up to 5000 characters. Records context or a decision about this variant separately from the experiment conclusion.'
+        ),
 })
 
 /**
@@ -913,12 +916,15 @@ export const ExperimentsVariantAnnotationsUpdateBody = /* @__PURE__ */ zod.objec
         ),
     content: zod
         .string()
+        .min(1)
         .max(experimentsVariantAnnotationsUpdateBodyContentMax)
-        .describe("The note text, e.g. 'Shipped this variant after reviewing the results'."),
+        .describe(
+            'Non-empty note text, up to 5000 characters. Records context or a decision about this variant separately from the experiment conclusion.'
+        ),
 })
 
 /**
- * Notes pinned to individual variants of an experiment, kept separate from its recorded conclusion.
+ * Edit a note you authored. Send only fields to change; omitted fields stay unchanged. Requires edit access to the experiment.
  */
 export const experimentsVariantAnnotationsPartialUpdateBodyVariantKeyMax = 400
 
@@ -934,9 +940,12 @@ export const ExperimentsVariantAnnotationsPartialUpdateBody = /* @__PURE__ */ zo
         ),
     content: zod
         .string()
+        .min(1)
         .max(experimentsVariantAnnotationsPartialUpdateBodyContentMax)
         .optional()
-        .describe("The note text, e.g. 'Shipped this variant after reviewing the results'."),
+        .describe(
+            'Non-empty note text, up to 5000 characters. Records context or a decision about this variant separately from the experiment conclusion.'
+        ),
 })
 
 /**

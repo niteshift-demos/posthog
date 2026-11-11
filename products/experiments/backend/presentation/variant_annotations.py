@@ -3,7 +3,7 @@ from typing import Any, Literal
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import serializers, viewsets
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.request import Request
@@ -24,8 +24,9 @@ class ExperimentVariantAnnotationSerializer(serializers.ModelSerializer):
         help_text="Key of the experiment variant this note is about, e.g. 'control' or 'test'. Must be one of the experiment's feature flag variants.",
     )
     content = serializers.CharField(
+        min_length=1,
         max_length=MAX_ANNOTATION_LENGTH,
-        help_text="The note text, e.g. 'Shipped this variant after reviewing the results'.",
+        help_text="Non-empty note text, up to 5000 characters. Records context or a decision about this variant separately from the experiment conclusion.",
     )
     created_by = UserBasicSerializer(read_only=True, allow_null=True, help_text="User who wrote the note.")
 
@@ -47,7 +48,31 @@ class ExperimentVariantAnnotationSerializer(serializers.ModelSerializer):
         return validate_annotation_variant_key(self.context["experiment"], value)
 
 
-@extend_schema(tags=["experiments"])
+@extend_schema_view(
+    list=extend_schema(
+        description="List notes for all variants of this experiment, newest first. Requires read access to the experiment."
+    ),
+    create=extend_schema(
+        description="Add a note to an existing feature flag variant of this experiment. Requires edit access to the experiment. The authenticated user becomes the author."
+    ),
+    partial_update=extend_schema(
+        description="Edit a note you authored. Send only fields to change; omitted fields stay unchanged. Requires edit access to the experiment."
+    ),
+    destroy=extend_schema(
+        description="Permanently delete a note you authored. Requires edit access to the experiment."
+    ),
+)
+@extend_schema(
+    tags=["experiments"],
+    parameters=[
+        OpenApiParameter(
+            "experiment_id",
+            int,
+            OpenApiParameter.PATH,
+            description="ID of the experiment containing the variant notes.",
+        ),
+    ],
+)
 class ExperimentVariantAnnotationViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
     """Notes pinned to individual variants of an experiment, kept separate from its recorded conclusion."""
 

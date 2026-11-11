@@ -1665,7 +1665,8 @@ export interface ExperimentVariantAnnotationApi {
      */
     variant_key: string
     /**
-     * The note text, e.g. 'Shipped this variant after reviewing the results'.
+     * Non-empty note text, up to 5000 characters. Records context or a decision about this variant separately from the experiment conclusion.
+     * @minLength 1
      * @maxLength 5000
      */
     content: string
@@ -1697,7 +1698,8 @@ export interface PatchedExperimentVariantAnnotationApi {
      */
     variant_key?: string
     /**
-     * The note text, e.g. 'Shipped this variant after reviewing the results'.
+     * Non-empty note text, up to 5000 characters. Records context or a decision about this variant separately from the experiment conclusion.
+     * @minLength 1
      * @maxLength 5000
      */
     content?: string
