@@ -1,5 +1,5 @@
 from functools import cached_property
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 
@@ -10,10 +10,15 @@ from rest_framework.request import Request
 
 from posthog.api.routing import TeamAndOrgViewSetMixin
 from posthog.api.shared import UserBasicSerializer
+from posthog.models.activity_logging.model_activity import is_impersonated_session
 
+from products.experiments.backend.activity_logging import log_variant_annotation_activity
 from products.experiments.backend.models.experiment import Experiment
 from products.experiments.backend.models.experiment_variant_annotation import ExperimentVariantAnnotation
 from products.experiments.backend.variant_annotations import validate_annotation_variant_key
+
+if TYPE_CHECKING:
+    from posthog.models.user import User
 
 MAX_ANNOTATION_LENGTH = 5000
 
@@ -87,7 +92,45 @@ class ExperimentVariantAnnotationViewSet(TeamAndOrgViewSetMixin, viewsets.ModelV
         return {**super().get_serializer_context(), "experiment": self.experiment}
 
     def perform_create(self, serializer: serializers.BaseSerializer) -> None:
-        serializer.save(experiment=self.experiment, team_id=self.experiment.team_id, created_by=self.request.user)
+        annotation = serializer.save(
+            experiment=self.experiment, team_id=self.experiment.team_id, created_by=self.request.user
+        )
+        log_variant_annotation_activity(
+            experiment=self.experiment,
+            user=cast("User", self.request.user),
+            activity="created",
+            before=None,
+            after=self.annotation_snapshot(annotation),
+            was_impersonated=is_impersonated_session(self.request),
+        )
+
+    def perform_update(self, serializer: serializers.BaseSerializer) -> None:
+        before = self.annotation_snapshot(cast(ExperimentVariantAnnotation, serializer.instance))
+        annotation = serializer.save()
+        log_variant_annotation_activity(
+            experiment=self.experiment,
+            user=cast("User", self.request.user),
+            activity="updated",
+            before=before,
+            after=self.annotation_snapshot(annotation),
+            was_impersonated=is_impersonated_session(self.request),
+        )
+
+    def perform_destroy(self, instance: ExperimentVariantAnnotation) -> None:
+        before = self.annotation_snapshot(instance)
+        instance.delete()
+        log_variant_annotation_activity(
+            experiment=self.experiment,
+            user=cast("User", self.request.user),
+            activity="deleted",
+            before=before,
+            after=None,
+            was_impersonated=is_impersonated_session(self.request),
+        )
+
+    @staticmethod
+    def annotation_snapshot(annotation: ExperimentVariantAnnotation) -> dict[str, str]:
+        return {"id": str(annotation.id), "variant_key": annotation.variant_key, "content": annotation.content}
 
     def safely_get_object(self, queryset: Any) -> ExperimentVariantAnnotation | None:
         try:

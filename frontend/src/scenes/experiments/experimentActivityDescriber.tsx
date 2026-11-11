@@ -116,6 +116,55 @@ export const experimentActivityDescriber = (logItem: ActivityLogItem): Humanized
     const isSharedMetric = logItem.detail.type === 'shared_metric'
 
     return match(logItem)
+        .with(
+            { activity: 'variant_annotation_created' },
+            { activity: 'variant_annotation_updated' },
+            { activity: 'variant_annotation_deleted' },
+            () => {
+                const change = logItem.detail.changes?.find((change) => change.field === 'variant_annotation')
+                const before = change?.before as { variant_key?: string; content?: string } | null | undefined
+                const after = change?.after as { variant_key?: string; content?: string } | null | undefined
+                const annotation = after ?? before
+                const verb =
+                    logItem.activity === 'variant_annotation_created'
+                        ? 'added'
+                        : logItem.activity === 'variant_annotation_updated'
+                          ? 'edited'
+                          : 'deleted'
+
+                return {
+                    description: (
+                        <SentenceList
+                            prefix={<strong className="ph-no-capture">{userNameForLogItem(logItem)}</strong>}
+                            listParts={[
+                                <span key="variant-annotation">
+                                    {verb} a note on variant <strong>{annotation?.variant_key}</strong> for
+                                </span>,
+                            ]}
+                            suffix={nameOrLinkToExperiment(logItem.detail.name, logItem.item_id)}
+                        />
+                    ),
+                    extendedDescription: (
+                        <div className="space-y-2 ph-no-capture">
+                            {before && after ? (
+                                <>
+                                    <div>
+                                        <strong>Before ({before.variant_key})</strong>
+                                        <p className="whitespace-pre-wrap">{before.content}</p>
+                                    </div>
+                                    <div>
+                                        <strong>After ({after.variant_key})</strong>
+                                        <p className="whitespace-pre-wrap">{after.content}</p>
+                                    </div>
+                                </>
+                            ) : (
+                                <p className="whitespace-pre-wrap">{annotation?.content}</p>
+                            )}
+                        </div>
+                    ),
+                }
+            }
+        )
         .with({ activity: 'created', detail: { type: 'saved_metric_config' } }, () => {
             return {
                 description: (
