@@ -2861,13 +2861,13 @@ export const ExperimentsListStatus = {
 
 export type ExperimentsVariantAnnotationsListParams = {
     /**
+     * Opaque cursor from the previous page's next URL. Lists older notes in creation order.
+     */
+    cursor?: string
+    /**
      * Number of results to return per page.
      */
     limit?: number
-    /**
-     * The initial index from which to return the results.
-     */
-    offset?: number
 }
 
 export type ExperimentsActivityRetrieveParams = {

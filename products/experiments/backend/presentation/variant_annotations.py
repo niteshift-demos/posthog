@@ -1,12 +1,19 @@
+from datetime import datetime
 from functools import cached_property
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar, cast
+from uuid import UUID
 
+from django.core import signing
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models import Model, Q, QuerySet
 
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, viewsets
 from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.request import Request
+from rest_framework.utils.urls import replace_query_param
+from rest_framework.views import APIView
 
 from posthog.api.routing import TeamAndOrgViewSetMixin
 from posthog.api.shared import UserBasicSerializer
@@ -16,6 +23,60 @@ from products.experiments.backend.models.experiment_variant_annotation import Ex
 from products.experiments.backend.variant_annotations import validate_annotation_variant_key
 
 MAX_ANNOTATION_LENGTH = 5000
+ModelType = TypeVar("ModelType", bound=Model)
+
+
+class VariantAnnotationPagination(LimitOffsetPagination):
+    default_limit = 20
+    max_limit = 100
+    cursor_salt = "experiment-variant-annotations"
+    next_cursor: str | None = None
+
+    def paginate_queryset(
+        self, queryset: QuerySet[ModelType], request: Request, view: APIView | None = None
+    ) -> list[ModelType]:
+        self.request = request
+        self.limit = self.get_limit(request) or self.default_limit
+        self.count = self.get_count(queryset)
+        cursor = request.query_params.get("cursor")
+        if cursor:
+            try:
+                created_at, annotation_id = signing.loads(cursor, salt=self.cursor_salt)
+                boundary_time = datetime.fromisoformat(created_at)
+                boundary_id = UUID(annotation_id)
+            except (signing.BadSignature, ValueError, TypeError):
+                raise NotFound("Invalid annotation cursor.")
+            # Include the ID so notes sharing a timestamp remain reachable after boundary deletions.
+            queryset = queryset.filter(
+                Q(created_at__lt=boundary_time) | Q(created_at=boundary_time, id__lt=boundary_id)
+            )
+        page = list(queryset.order_by("-created_at", "-id")[: self.limit + 1])
+        self.next_cursor = None
+        if len(page) > self.limit:
+            last = cast(ExperimentVariantAnnotation, page[self.limit - 1])
+            self.next_cursor = signing.dumps([last.created_at.isoformat(), str(last.id)], salt=self.cursor_salt)
+        return page[: self.limit]
+
+    def get_next_link(self) -> str | None:
+        if self.next_cursor is None or self.request is None:
+            return None
+        return replace_query_param(self.request.build_absolute_uri(), "cursor", self.next_cursor)
+
+    def get_previous_link(self) -> None:
+        return None
+
+    def get_schema_operation_parameters(self, view: APIView) -> list[dict[str, Any]]:
+        return [
+            parameter for parameter in super().get_schema_operation_parameters(view) if parameter["name"] != "offset"
+        ] + [
+            {
+                "name": "cursor",
+                "required": False,
+                "in": "query",
+                "description": "Opaque cursor from the previous page's next URL. Lists older notes in creation order.",
+                "schema": {"type": "string"},
+            }
+        ]
 
 
 class ExperimentVariantAnnotationSerializer(serializers.ModelSerializer):
@@ -53,6 +114,7 @@ class ExperimentVariantAnnotationViewSet(TeamAndOrgViewSetMixin, viewsets.ModelV
 
     scope_object: Literal["experiment"] = "experiment"
     serializer_class = ExperimentVariantAnnotationSerializer
+    pagination_class = VariantAnnotationPagination
     # Creating a note is a write on one experiment, so per-experiment editor grants are enough; initial() checks it.
     create_checks_parent_object_access = True
     # unscoped() because a class attribute is built before any team context exists; the parent

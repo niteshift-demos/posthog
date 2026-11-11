@@ -49,7 +49,7 @@ export function VariantAnnotationComposer({
                     loading={pendingAction === 'create'}
                     disabledReason={
                         pendingAction && pendingAction !== 'create'
-                            ? 'Wait for the current change to save'
+                            ? 'Wait for the current request to finish'
                             : !draftVariantKey
                               ? 'Select a variant first'
                               : !draftContent.trim()

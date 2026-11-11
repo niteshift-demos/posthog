@@ -63,7 +63,7 @@ export function VariantAnnotationItem({
                         loading={pendingAction === 'update'}
                         disabledReason={
                             pendingAction && pendingAction !== 'update'
-                                ? 'Wait for the current change to save'
+                                ? 'Wait for the current request to finish'
                                 : !editingAnnotation.content.trim()
                                   ? 'Write a note first'
                                   : undefined
@@ -112,7 +112,7 @@ export function VariantAnnotationItem({
                         <LemonButton
                             size="xsmall"
                             icon={<IconEllipsis />}
-                            disabledReason={pendingAction ? 'Wait for the current change to save' : undefined}
+                            disabledReason={pendingAction ? 'Wait for the current request to finish' : undefined}
                             aria-label="Annotation actions"
                             data-attr="experiment-variant-annotation-menu"
                         />
