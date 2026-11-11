@@ -894,7 +894,7 @@ export const ExperimentsVariantAnnotationsCreateBody = /* @__PURE__ */ zod.objec
     content: zod
         .string()
         .max(experimentsVariantAnnotationsCreateBodyContentMax)
-        .describe("The note text, e.g. 'Shipped this variant after reviewing the results'."),
+        .describe('Markdown note, up to 5000 characters including formatting and @member:<user_id> mentions.'),
 })
 
 /**
@@ -914,7 +914,7 @@ export const ExperimentsVariantAnnotationsUpdateBody = /* @__PURE__ */ zod.objec
     content: zod
         .string()
         .max(experimentsVariantAnnotationsUpdateBodyContentMax)
-        .describe("The note text, e.g. 'Shipped this variant after reviewing the results'."),
+        .describe('Markdown note, up to 5000 characters including formatting and @member:<user_id> mentions.'),
 })
 
 /**
@@ -936,7 +936,7 @@ export const ExperimentsVariantAnnotationsPartialUpdateBody = /* @__PURE__ */ zo
         .string()
         .max(experimentsVariantAnnotationsPartialUpdateBodyContentMax)
         .optional()
-        .describe("The note text, e.g. 'Shipped this variant after reviewing the results'."),
+        .describe('Markdown note, up to 5000 characters including formatting and @member:<user_id> mentions.'),
 })
 
 /**

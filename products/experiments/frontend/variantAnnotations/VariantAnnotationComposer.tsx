@@ -1,8 +1,9 @@
 import { useActions, useValues } from 'kea'
 
-import { LemonButton, LemonSelect, LemonTextArea } from '@posthog/lemon-ui'
+import { LemonButton, LemonSelect } from '@posthog/lemon-ui'
 
 import { MAX_ANNOTATION_LENGTH, experimentVariantAnnotationsLogic } from './experimentVariantAnnotationsLogic'
+import { VariantAnnotationEditor } from './VariantAnnotationEditor'
 
 export function VariantAnnotationComposer({
     experimentId,
@@ -12,14 +13,8 @@ export function VariantAnnotationComposer({
     variantKeys: string[]
 }): JSX.Element {
     const logic = experimentVariantAnnotationsLogic({ experimentId })
-    const { draftVariantKey, draftContent, canSubmitDraft, pendingAction } = useValues(logic)
-    const { setDraftVariantKey, setDraftContent, createAnnotation } = useActions(logic)
-
-    const submit = (): void => {
-        if (canSubmitDraft && draftVariantKey && !pendingAction) {
-            createAnnotation({ variantKey: draftVariantKey, content: draftContent })
-        }
-    }
+    const { draftVariantKey, draftContent, pendingAction } = useValues(logic)
+    const { setDraftVariantKey, submitDraft } = useActions(logic)
 
     return (
         <div className="flex flex-col gap-2">
@@ -32,20 +27,12 @@ export function VariantAnnotationComposer({
                 data-attr="experiment-variant-annotation-variant-select"
                 fullWidth
             />
-            <LemonTextArea
-                placeholder="Add a note about this variant, for example why you shipped it"
-                value={draftContent}
-                onChange={setDraftContent}
-                onPressCmdEnter={submit}
-                minRows={2}
-                maxLength={MAX_ANNOTATION_LENGTH}
-                data-attr="experiment-variant-annotation-content"
-            />
+            <VariantAnnotationEditor experimentId={experimentId} onSubmit={submitDraft} />
             <div className="flex justify-end">
                 <LemonButton
                     type="primary"
                     size="small"
-                    onClick={submit}
+                    onClick={submitDraft}
                     loading={pendingAction === 'create'}
                     disabledReason={
                         pendingAction && pendingAction !== 'create'
@@ -54,7 +41,9 @@ export function VariantAnnotationComposer({
                               ? 'Select a variant first'
                               : !draftContent.trim()
                                 ? 'Write a note first'
-                                : undefined
+                                : draftContent.length > MAX_ANNOTATION_LENGTH
+                                  ? 'Keep the note within 5,000 characters'
+                                  : undefined
                     }
                     data-attr="experiment-variant-annotation-add"
                 >
