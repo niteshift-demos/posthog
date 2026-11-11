@@ -1675,6 +1675,10 @@ export interface ExperimentVariantAnnotationApi {
     readonly created_at: string
     /** When the note was last changed. */
     readonly updated_at: string
+    /** Whether you can edit this note. Only its author can edit it. */
+    readonly can_edit: boolean
+    /** Whether you can delete this note as its author, an organization admin, an experiment manager, or an editor when its author was deleted. */
+    readonly can_delete: boolean
 }
 
 export interface PaginatedExperimentVariantAnnotationListApi {
@@ -1707,6 +1711,10 @@ export interface PatchedExperimentVariantAnnotationApi {
     readonly created_at?: string
     /** When the note was last changed. */
     readonly updated_at?: string
+    /** Whether you can edit this note. Only its author can edit it. */
+    readonly can_edit?: boolean
+    /** Whether you can delete this note as its author, an organization admin, an experiment manager, or an editor when its author was deleted. */
+    readonly can_delete?: boolean
 }
 
 /**
