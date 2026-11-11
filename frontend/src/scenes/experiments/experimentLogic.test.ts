@@ -19,6 +19,8 @@ import {
 import { initKeaTests } from '~/test/init'
 import { Experiment, MultivariateFlagVariant } from '~/types'
 
+import { experimentVariantAnnotationsLogic } from 'products/experiments/frontend/variantAnnotations/experimentVariantAnnotationsLogic'
+
 import { ExperimentSavedMetric, ExperimentWarning, experimentLogic, getDisplayOrderedIndices } from './experimentLogic'
 
 jest.mock('lib/lemon-ui/LemonToast/LemonToast', () => ({
@@ -1844,6 +1846,80 @@ describe('experimentLogic', () => {
     })
 
     describe('finishExperiment (ship variant)', () => {
+        it.each([
+            { shipFails: false, noteFails: false },
+            { shipFails: false, noteFails: true },
+            { shipFails: true, noteFails: false },
+        ])('preserves ship and note outcomes ($shipFails, $noteFails)', async ({ shipFails, noteFails }) => {
+            const runningExperiment = { ...experiment, status: 'running', end_date: null } as Experiment
+            const shippedExperiment = {
+                ...runningExperiment,
+                status: 'stopped',
+                end_date: '2026-03-24T10:00:00Z',
+            }
+            const annotation = {
+                id: 'ship-note',
+                variant_key: 'test',
+                content: 'The variant improves engagement.',
+            }
+            const createSpy = jest.spyOn(api, 'create').mockImplementation(async (url) => {
+                if (url.includes('/ship_variant')) {
+                    if (shipFails) {
+                        throw new Error('Ship failed')
+                    }
+                    return shippedExperiment
+                }
+                if (noteFails) {
+                    throw new Error('Note failed')
+                }
+                return annotation
+            })
+            const keyed = experimentLogic({ experimentId: experiment.id })
+            const annotationsLogic = experimentVariantAnnotationsLogic({ experimentId: experiment.id as number })
+            useMocks({
+                get: {
+                    '/api/projects/:team/experiments/:id/variant_annotations/': { results: [] },
+                },
+            })
+            keyed.mount()
+            annotationsLogic.mount()
+            await expectLogic(annotationsLogic).toFinishAllListeners()
+            keyed.actions.setExperiment(runningExperiment)
+            jest.mocked(lemonToast.error).mockClear()
+
+            try {
+                await expectLogic(keyed, () => {
+                    keyed.actions.finishExperiment({
+                        selectedVariantKey: 'test',
+                        releaseToEveryone: false,
+                        note: '  The variant improves engagement.  ',
+                    })
+                }).toFinishAllListeners()
+
+                expect(keyed.values.endExperimentLoading).toBe(false)
+                expect(keyed.values.experiment.status).toBe(shipFails ? 'running' : 'stopped')
+                expect(keyed.values.experiment.conclusion_comment).toBe(experiment.conclusion_comment)
+                const annotationCalls = createSpy.mock.calls.filter(([url]) => url.includes('/variant_annotations/'))
+                expect(annotationCalls).toHaveLength(shipFails ? 0 : 1)
+                expect(annotationsLogic.values.annotations).toEqual(shipFails || noteFails ? [] : [annotation])
+                if (!shipFails) {
+                    expect(annotationCalls[0][1]).toEqual({ variant_key: 'test', content: annotation.content })
+                }
+                if (noteFails) {
+                    expect(annotationsLogic.values.draftVariantKey).toBe('test')
+                    expect(annotationsLogic.values.draftContent).toBe('  The variant improves engagement.  ')
+                    expect(lemonToast.error).toHaveBeenCalledWith(
+                        'Variant shipped, but the note could not be saved. Retry it in the variant annotations panel.'
+                    )
+                    expect(lemonToast.error).not.toHaveBeenCalledWith('Failed to ship variant')
+                }
+            } finally {
+                createSpy.mockRestore()
+                annotationsLogic.unmount()
+                keyed.unmount()
+            }
+        })
+
         it('calls ship_variant endpoint and dispatches setExperiment with response', async () => {
             const runningExperiment = {
                 ...experiment,

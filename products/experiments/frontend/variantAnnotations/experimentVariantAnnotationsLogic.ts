@@ -1,9 +1,8 @@
 import { MakeLogicType, actions, afterMount, connect, kea, key, listeners, path, props, reducers, selectors } from 'kea'
 import { loaders } from 'kea-loaders'
 
-import { lemonToast } from '@posthog/lemon-ui'
-
 import { ApiConfig } from 'lib/api'
+import { lemonToast } from 'lib/lemon-ui/LemonToast/LemonToast'
 import { userLogic } from 'scenes/userLogic'
 
 import type { UserType } from '~/types'
@@ -56,9 +55,18 @@ export interface experimentVariantAnnotationsLogicActions {
     cancelEditing: () => {
         value: true
     }
-    createAnnotation: ({ variantKey, content }: { content: string; variantKey: string }) => {
+    createAnnotation: ({
+        variantKey,
+        content,
+        fromShip,
+    }: {
+        content: string
+        fromShip?: boolean
+        variantKey: string
+    }) => {
         variantKey: string
         content: string
+        fromShip?: boolean
     }
     createAnnotationFailure: (
         error: string,
@@ -72,12 +80,14 @@ export interface experimentVariantAnnotationsLogicActions {
         payload?: {
             variantKey: string
             content: string
+            fromShip?: boolean
         }
     ) => {
         annotations: ExperimentVariantAnnotationApi[]
         payload?: {
             variantKey: string
             content: string
+            fromShip?: boolean
         }
     }
     deleteAnnotation: (id: string) => string
@@ -226,17 +236,37 @@ export const experimentVariantAnnotationsLogic = kea<experimentVariantAnnotation
         ],
     }),
 
-    loaders(({ props, values }) => ({
+    loaders(({ props, values, actions }) => ({
         // null until the first load resolves, so the panel can tell "loading" apart from "no notes yet"
         annotations: [
             null as ExperimentVariantAnnotationApi[] | null,
             {
                 loadAnnotations: async () => await fetchAnnotations(props.experimentId),
-                createAnnotation: async ({ variantKey, content }: { variantKey: string; content: string }) => {
-                    const created = await experimentsVariantAnnotationsCreate(projectId(), props.experimentId, {
-                        variant_key: variantKey,
-                        content: content.trim(),
-                    })
+                createAnnotation: async ({
+                    variantKey,
+                    content,
+                    fromShip,
+                }: {
+                    variantKey: string
+                    content: string
+                    fromShip?: boolean
+                }) => {
+                    let created: ExperimentVariantAnnotationApi
+                    try {
+                        created = await experimentsVariantAnnotationsCreate(projectId(), props.experimentId, {
+                            variant_key: variantKey,
+                            content: content.trim(),
+                        })
+                    } catch (error) {
+                        if (fromShip) {
+                            actions.setDraftVariantKey(variantKey)
+                            actions.setDraftContent(content)
+                            lemonToast.error(
+                                'Variant shipped, but the note could not be saved. Retry it in the variant annotations panel.'
+                            )
+                        }
+                        throw error
+                    }
                     // If the first load failed there is no list to prepend to, so fetch the real one
                     if (values.annotations === null) {
                         return await fetchAnnotations(props.experimentId)
