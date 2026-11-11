@@ -1397,3 +1397,21 @@ tools:
     experiments-update:
         operation: experiments_update
         enabled: false
+    experiments-variant-annotations-create:
+        operation: experiments_variant_annotations_create
+        enabled: false
+    experiments-variant-annotations-destroy:
+        operation: experiments_variant_annotations_destroy
+        enabled: false
+    experiments-variant-annotations-list:
+        operation: experiments_variant_annotations_list
+        enabled: false
+    experiments-variant-annotations-partial-update:
+        operation: experiments_variant_annotations_partial_update
+        enabled: false
+    experiments-variant-annotations-retrieve:
+        operation: experiments_variant_annotations_retrieve
+        enabled: false
+    experiments-variant-annotations-update:
+        operation: experiments_variant_annotations_update
+        enabled: false

@@ -33854,6 +33854,29 @@ export namespace Schemas {
       too_early: boolean;
     }
 
+    export interface ExperimentVariantAnnotation {
+      /** Unique identifier of the annotation. */
+      readonly id: string;
+      /** ID of the experiment the annotation belongs to. */
+      readonly experiment: number;
+      /**
+         * Key of the experiment variant this note is about, e.g. 'control' or 'test'. Must be one of the experiment's feature flag variants.
+         * @maxLength 400
+         */
+      variant_key: string;
+      /**
+         * The note text, e.g. 'Shipped this variant after reviewing the results'.
+         * @maxLength 5000
+         */
+      content: string;
+      /** User who wrote the note. */
+      readonly created_by: UserBasic | null;
+      /** When the note was written. */
+      readonly created_at: string;
+      /** When the note was last changed. */
+      readonly updated_at: string;
+    }
+
     /**
      * The experiment state as the client last read it, used together with `version` to resolve concurrent edits: metric collections merge per metric uuid, and any other field the update carries merges per field against its base value here (only a same-field double edit fails). Relevant keys are metrics, metrics_secondary, saved_metrics_ids, plus the last-read values of whichever scalar fields the update writes; unknown keys are ignored. Changed fields without a base value — and, without this object, any version mismatch — fail with HTTP 409.
      * @nullable
@@ -51452,6 +51475,15 @@ export namespace Schemas {
       results: ExperimentSavedMetric[];
     }
 
+    export interface PaginatedExperimentVariantAnnotationList {
+      count: number;
+      /** @nullable */
+      next?: string | null;
+      /** @nullable */
+      previous?: string | null;
+      results: ExperimentVariantAnnotation[];
+    }
+
     export interface PaginatedExportedAssetList {
       count: number;
       /** @nullable */
@@ -59110,6 +59142,29 @@ export namespace Schemas {
          * @nullable
          */
       readonly user_access_level?: string | null;
+    }
+
+    export interface PatchedExperimentVariantAnnotation {
+      /** Unique identifier of the annotation. */
+      readonly id?: string;
+      /** ID of the experiment the annotation belongs to. */
+      readonly experiment?: number;
+      /**
+         * Key of the experiment variant this note is about, e.g. 'control' or 'test'. Must be one of the experiment's feature flag variants.
+         * @maxLength 400
+         */
+      variant_key?: string;
+      /**
+         * The note text, e.g. 'Shipped this variant after reviewing the results'.
+         * @maxLength 5000
+         */
+      content?: string;
+      /** User who wrote the note. */
+      readonly created_by?: UserBasic | null;
+      /** When the note was written. */
+      readonly created_at?: string;
+      /** When the note was last changed. */
+      readonly updated_at?: string;
     }
 
     /**
@@ -89064,6 +89119,17 @@ export namespace Schemas {
       Running: 'running',
       Stopped: 'stopped',
     } as const;
+
+    export type ExperimentsVariantAnnotationsListParams = {
+    /**
+     * Number of results to return per page.
+     */
+    limit?: number;
+    /**
+     * The initial index from which to return the results.
+     */
+    offset?: number;
+    };
 
     export type ExperimentsActivityRetrieveParams = {
     /**

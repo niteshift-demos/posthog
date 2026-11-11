@@ -963,9 +963,10 @@ class AccessControlPermission(ScopeBasePermission):
         elif getattr(view, "requires_resource_level_access", False):
             self.message = f"You do not have {required_level} access to this resource."
             return False
-        elif view.action == "create":
+        elif view.action == "create" and not getattr(view, "create_checks_parent_object_access", False):
             # If the user has no access to the resource level, but is trying to create a new object, we should block it
-            # Specific object access isn't relevant here as we are trying to create a new object
+            # Specific object access isn't relevant here as we are trying to create a new object.
+            # Views that create children of an existing object opt out, and must check that parent object themselves.
             self.message = f"You do not have {required_level} access to this resource."
             return False
 
