@@ -24,6 +24,8 @@ import {
 } from '~/scenes/experiments/legacy'
 import { Experiment } from '~/types'
 
+import { ExperimentAnnotations } from 'products/experiments/frontend/ExperimentAnnotations'
+
 import { experimentLogic } from '../experimentLogic'
 import { DEFAULT_EXPERIMENT_TAB, type ExperimentTab, experimentSceneLogic } from '../experimentSceneLogic'
 import { DistributionModal, DistributionTable } from '../ExperimentView/DistributionTable'
@@ -106,6 +108,7 @@ const LegacyMetricsTab = (): JSX.Element => {
                 </>
             )}
             <LegacyMetricsView isSecondary={true} />
+            <ExperimentAnnotations />
         </>
     )
 }
