@@ -28,17 +28,21 @@ import type {
     ExperimentSessionContextsRequestApi,
     ExperimentSessionContextsResponseApi,
     ExperimentSessionEventDeltaResponseApi,
+    ExperimentVariantAnnotationApi,
     ExperimentWriteApi,
     ExperimentsActivityRetrieveParams,
     ExperimentsListParams,
     ExperimentsPromptTemplatesRetrieve200Item,
     ExperimentsSessionContextRetrieveParams,
     ExperimentsTimeseriesResultsRetrieveParams,
+    ExperimentsVariantAnnotationsListParams,
     PaginatedExperimentBasicListApi,
     PaginatedExperimentHoldoutListApi,
     PaginatedExperimentSavedMetricListApi,
+    PaginatedExperimentVariantAnnotationListApi,
     PatchedExperimentHoldoutApi,
     PatchedExperimentSavedMetricApi,
+    PatchedExperimentVariantAnnotationApi,
     PatchedExperimentWriteApi,
     RecalculateMetricsRequestApi,
     RunningTimeCalculationInputApi,
@@ -330,6 +334,163 @@ export const experimentsCreate = async (
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...options?.headers },
         body: JSON.stringify(experimentWriteApi),
+    })
+}
+
+export const getExperimentsVariantAnnotationsListUrl = (
+    projectId: string,
+    experimentId: number,
+    params?: ExperimentsVariantAnnotationsListParams
+) => {
+    const normalizedParams = new URLSearchParams()
+
+    Object.entries(params || {}).forEach(([key, value]) => {
+        if (value !== undefined) {
+            normalizedParams.append(key, value === null ? 'null' : String(value))
+        }
+    })
+
+    const stringifiedParams = normalizedParams.toString()
+
+    return stringifiedParams.length > 0
+        ? `/api/projects/${projectId}/experiments/${experimentId}/variant_annotations/?${stringifiedParams}`
+        : `/api/projects/${projectId}/experiments/${experimentId}/variant_annotations/`
+}
+
+/**
+ * Notes pinned to individual variants of an experiment, kept separate from its recorded conclusion.
+ */
+export const experimentsVariantAnnotationsList = async (
+    projectId: string,
+    experimentId: number,
+    params?: ExperimentsVariantAnnotationsListParams,
+    options?: RequestInit
+): Promise<PaginatedExperimentVariantAnnotationListApi> => {
+    return apiMutator<PaginatedExperimentVariantAnnotationListApi>(
+        getExperimentsVariantAnnotationsListUrl(projectId, experimentId, params),
+        {
+            ...options,
+            method: 'GET',
+        }
+    )
+}
+
+export const getExperimentsVariantAnnotationsCreateUrl = (projectId: string, experimentId: number) => {
+    return `/api/projects/${projectId}/experiments/${experimentId}/variant_annotations/`
+}
+
+/**
+ * Notes pinned to individual variants of an experiment, kept separate from its recorded conclusion.
+ */
+export const experimentsVariantAnnotationsCreate = async (
+    projectId: string,
+    experimentId: number,
+    experimentVariantAnnotationApi: NonReadonly<ExperimentVariantAnnotationApi>,
+    options?: RequestInit
+): Promise<ExperimentVariantAnnotationApi> => {
+    return apiMutator<ExperimentVariantAnnotationApi>(
+        getExperimentsVariantAnnotationsCreateUrl(projectId, experimentId),
+        {
+            ...options,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...options?.headers },
+            body: JSON.stringify(experimentVariantAnnotationApi),
+        }
+    )
+}
+
+export const getExperimentsVariantAnnotationsRetrieveUrl = (projectId: string, experimentId: number, id: string) => {
+    return `/api/projects/${projectId}/experiments/${experimentId}/variant_annotations/${id}/`
+}
+
+/**
+ * Notes pinned to individual variants of an experiment, kept separate from its recorded conclusion.
+ */
+export const experimentsVariantAnnotationsRetrieve = async (
+    projectId: string,
+    experimentId: number,
+    id: string,
+    options?: RequestInit
+): Promise<ExperimentVariantAnnotationApi> => {
+    return apiMutator<ExperimentVariantAnnotationApi>(
+        getExperimentsVariantAnnotationsRetrieveUrl(projectId, experimentId, id),
+        {
+            ...options,
+            method: 'GET',
+        }
+    )
+}
+
+export const getExperimentsVariantAnnotationsUpdateUrl = (projectId: string, experimentId: number, id: string) => {
+    return `/api/projects/${projectId}/experiments/${experimentId}/variant_annotations/${id}/`
+}
+
+/**
+ * Notes pinned to individual variants of an experiment, kept separate from its recorded conclusion.
+ */
+export const experimentsVariantAnnotationsUpdate = async (
+    projectId: string,
+    experimentId: number,
+    id: string,
+    experimentVariantAnnotationApi: NonReadonly<ExperimentVariantAnnotationApi>,
+    options?: RequestInit
+): Promise<ExperimentVariantAnnotationApi> => {
+    return apiMutator<ExperimentVariantAnnotationApi>(
+        getExperimentsVariantAnnotationsUpdateUrl(projectId, experimentId, id),
+        {
+            ...options,
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', ...options?.headers },
+            body: JSON.stringify(experimentVariantAnnotationApi),
+        }
+    )
+}
+
+export const getExperimentsVariantAnnotationsPartialUpdateUrl = (
+    projectId: string,
+    experimentId: number,
+    id: string
+) => {
+    return `/api/projects/${projectId}/experiments/${experimentId}/variant_annotations/${id}/`
+}
+
+/**
+ * Notes pinned to individual variants of an experiment, kept separate from its recorded conclusion.
+ */
+export const experimentsVariantAnnotationsPartialUpdate = async (
+    projectId: string,
+    experimentId: number,
+    id: string,
+    patchedExperimentVariantAnnotationApi?: NonReadonly<PatchedExperimentVariantAnnotationApi>,
+    options?: RequestInit
+): Promise<ExperimentVariantAnnotationApi> => {
+    return apiMutator<ExperimentVariantAnnotationApi>(
+        getExperimentsVariantAnnotationsPartialUpdateUrl(projectId, experimentId, id),
+        {
+            ...options,
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', ...options?.headers },
+            body: JSON.stringify(patchedExperimentVariantAnnotationApi),
+        }
+    )
+}
+
+export const getExperimentsVariantAnnotationsDestroyUrl = (projectId: string, experimentId: number, id: string) => {
+    return `/api/projects/${projectId}/experiments/${experimentId}/variant_annotations/${id}/`
+}
+
+/**
+ * Notes pinned to individual variants of an experiment, kept separate from its recorded conclusion.
+ */
+export const experimentsVariantAnnotationsDestroy = async (
+    projectId: string,
+    experimentId: number,
+    id: string,
+    options?: RequestInit
+): Promise<void> => {
+    return apiMutator<void>(getExperimentsVariantAnnotationsDestroyUrl(projectId, experimentId, id), {
+        ...options,
+        method: 'DELETE',
     })
 }
 

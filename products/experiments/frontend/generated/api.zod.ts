@@ -878,6 +878,68 @@ export const ExperimentsCreateBody = /* @__PURE__ */ zod
     .describe('Deep\/recursive schema (opaque in Zod — use TypeScript types for full shape)')
 
 /**
+ * Notes pinned to individual variants of an experiment, kept separate from its recorded conclusion.
+ */
+export const experimentsVariantAnnotationsCreateBodyVariantKeyMax = 400
+
+export const experimentsVariantAnnotationsCreateBodyContentMax = 5000
+
+export const ExperimentsVariantAnnotationsCreateBody = /* @__PURE__ */ zod.object({
+    variant_key: zod
+        .string()
+        .max(experimentsVariantAnnotationsCreateBodyVariantKeyMax)
+        .describe(
+            "Key of the experiment variant this note is about, e.g. 'control' or 'test'. Must be one of the experiment's feature flag variants."
+        ),
+    content: zod
+        .string()
+        .max(experimentsVariantAnnotationsCreateBodyContentMax)
+        .describe("The note text, e.g. 'Shipped this variant after reviewing the results'."),
+})
+
+/**
+ * Notes pinned to individual variants of an experiment, kept separate from its recorded conclusion.
+ */
+export const experimentsVariantAnnotationsUpdateBodyVariantKeyMax = 400
+
+export const experimentsVariantAnnotationsUpdateBodyContentMax = 5000
+
+export const ExperimentsVariantAnnotationsUpdateBody = /* @__PURE__ */ zod.object({
+    variant_key: zod
+        .string()
+        .max(experimentsVariantAnnotationsUpdateBodyVariantKeyMax)
+        .describe(
+            "Key of the experiment variant this note is about, e.g. 'control' or 'test'. Must be one of the experiment's feature flag variants."
+        ),
+    content: zod
+        .string()
+        .max(experimentsVariantAnnotationsUpdateBodyContentMax)
+        .describe("The note text, e.g. 'Shipped this variant after reviewing the results'."),
+})
+
+/**
+ * Notes pinned to individual variants of an experiment, kept separate from its recorded conclusion.
+ */
+export const experimentsVariantAnnotationsPartialUpdateBodyVariantKeyMax = 400
+
+export const experimentsVariantAnnotationsPartialUpdateBodyContentMax = 5000
+
+export const ExperimentsVariantAnnotationsPartialUpdateBody = /* @__PURE__ */ zod.object({
+    variant_key: zod
+        .string()
+        .max(experimentsVariantAnnotationsPartialUpdateBodyVariantKeyMax)
+        .optional()
+        .describe(
+            "Key of the experiment variant this note is about, e.g. 'control' or 'test'. Must be one of the experiment's feature flag variants."
+        ),
+    content: zod
+        .string()
+        .max(experimentsVariantAnnotationsPartialUpdateBodyContentMax)
+        .optional()
+        .describe("The note text, e.g. 'Shipped this variant after reviewing the results'."),
+})
+
+/**
  * Mixin for ViewSets to handle approval-gate exceptions raised from decorated serializers.
  *
  * Intercepts ApprovalRequired (409) and PolicyConflict (400) raised by the @approval_gate

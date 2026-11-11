@@ -5,12 +5,15 @@ import { LemonTab, LemonTabs } from '@posthog/lemon-ui'
 import { ActivityLog } from 'lib/components/ActivityLog/ActivityLog'
 import { FEATURE_FLAGS } from 'lib/constants'
 import { featureFlagLogic } from 'lib/logic/featureFlagLogic'
+import { userHasAccess } from 'lib/utils/accessControlUtils'
 import { PendingChangeRequestBanner } from 'scenes/approvals/PendingChangeRequestBanner'
 import { WebExperimentImplementationDetails } from 'scenes/experiments/WebExperimentImplementationDetails'
 
 import { SceneContent } from '~/layout/scenes/components/SceneContent'
 import { LegacyExperimentView } from '~/scenes/experiments/legacy'
-import { ActivityScope } from '~/types'
+import { AccessControlLevel, AccessControlResourceType, ActivityScope } from '~/types'
+
+import { VariantAnnotationsPanel } from 'products/experiments/frontend/variantAnnotations/VariantAnnotationsPanel'
 
 import { EmptyMetricsPanel } from '../ExperimentForm/MetricsPanel/EmptyMetricsPanel'
 import { ExperimentImplementationDetails } from '../ExperimentImplementationDetails'
@@ -24,7 +27,7 @@ import { SharedMetricModal } from '../Metrics/SharedMetricModal'
 import { sharedMetricModalLogic } from '../Metrics/sharedMetricModalLogic'
 import { Metrics } from '../MetricsView/new/Metrics'
 import { RecalculationStatus } from '../MetricsView/shared/RecalculationStatus'
-import { isLegacyExperiment } from '../utils'
+import { getExperimentVariants, isLegacyExperiment } from '../utils'
 import { DistributionModal, DistributionTable } from './DistributionTable'
 import { ExperimentDebugPanel } from './ExperimentExecutionPathComparison'
 import { ExperimentFeedbackTab } from './ExperimentFeedbackTab'
@@ -65,15 +68,32 @@ const MetricsTab = (): JSX.Element => {
 
             {showRecalculationStatus && <RecalculationStatus experiment={experiment} />}
 
-            {/* Modern metrics view */}
-            {!hasMetrics ? (
-                <EmptyMetricsPanel isLaunched={isExperimentLaunched} />
-            ) : (
-                <>
-                    <Metrics isSecondary={false} />
-                    <Metrics isSecondary={true} />
-                </>
-            )}
+            <div className="flex flex-col xl:flex-row gap-4 items-start">
+                <div className="flex-1 min-w-0 w-full">
+                    {/* Modern metrics view */}
+                    {!hasMetrics ? (
+                        <EmptyMetricsPanel isLaunched={isExperimentLaunched} />
+                    ) : (
+                        <>
+                            <Metrics isSecondary={false} />
+                            <Metrics isSecondary={true} />
+                        </>
+                    )}
+                </div>
+                {typeof experiment.id === 'number' && (
+                    <div className="w-full xl:w-80 shrink-0">
+                        <VariantAnnotationsPanel
+                            experimentId={experiment.id}
+                            variantKeys={getExperimentVariants(experiment).map(({ key }) => key)}
+                            canEdit={userHasAccess(
+                                AccessControlResourceType.Experiment,
+                                AccessControlLevel.Editor,
+                                experiment.user_access_level
+                            )}
+                        />
+                    </div>
+                )}
+            </div>
         </>
     )
 }
