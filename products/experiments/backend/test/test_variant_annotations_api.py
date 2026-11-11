@@ -56,6 +56,8 @@ class TestExperimentVariantAnnotationsAPI(APIBaseTest):
         assert created["experiment"] == self.experiment.id
         assert created["created_by"]["id"] == self.user.id
         assert created["created_at"] is not None
+        assert created["can_edit"] is True
+        assert created["can_delete"] is True
 
         own = self.client.get(self._url(self.experiment.id)).json()["results"]
         assert [a["id"] for a in own] == [created["id"]]
@@ -176,9 +178,43 @@ class TestExperimentVariantAnnotationsAPI(APIBaseTest):
 
         assert listed.status_code == status.HTTP_200_OK
         assert [a["id"] for a in listed.json()["results"]] == [created["id"]]
+        assert listed.json()["results"][0]["can_edit"] is False
+        assert listed.json()["results"][0]["can_delete"] is False
         assert patched.status_code == status.HTTP_403_FORBIDDEN
         assert deleted.status_code == status.HTTP_403_FORBIDDEN
         assert ExperimentVariantAnnotation.objects.get(id=created["id"]).content == "Test won on conversion"
+
+    @parameterized.expand(
+        [
+            ("admin", OrganizationMembership.Level.ADMIN, False, True),
+            ("owner", OrganizationMembership.Level.OWNER, False, True),
+            ("member", OrganizationMembership.Level.MEMBER, False, False),
+            ("orphan", OrganizationMembership.Level.MEMBER, True, True),
+        ]
+    )
+    def test_moderation_without_access_controls(self, _name: str, level: int, orphan: bool, can_delete: bool) -> None:
+        author = User.objects.create_and_join(self.organization, "departed@example.com", "password")
+        annotation = ExperimentVariantAnnotation.objects.create(
+            team=self.team, experiment=self.experiment, created_by=author, variant_key="test", content="Original note"
+        )
+        OrganizationMembership.objects.filter(user=author, organization=self.organization).delete()
+        if orphan:
+            author.delete()
+        self.organization_membership.level = level
+        self.organization_membership.save()
+        url = self._url(self.experiment.id, str(annotation.id))
+
+        body = self.client.get(url).json()
+        assert body["can_edit"] is False
+        assert body["can_delete"] is can_delete
+        for method in ("patch", "put"):
+            response = getattr(self.client, method)(url, {"variant_key": "test", "content": "Changed"}, format="json")
+            assert response.status_code == status.HTTP_403_FORBIDDEN
+        annotation.refresh_from_db()
+        assert annotation.content == "Original note"
+        response = self.client.delete(url)
+        assert response.status_code == (status.HTTP_204_NO_CONTENT if can_delete else status.HTTP_403_FORBIDDEN)
+        assert ExperimentVariantAnnotation.objects.filter(id=annotation.id).exists() is not can_delete
 
 
 class TestExperimentVariantAnnotationsAccessControl(APILicensedTest):
@@ -219,3 +255,42 @@ class TestExperimentVariantAnnotationsAccessControl(APILicensedTest):
     def test_viewer_can_list_annotations(self) -> None:
         response = self.client.get(self._url(self.restricted))
         assert response.status_code == status.HTTP_200_OK
+
+    @parameterized.expand(
+        [
+            ("manager", "other", False, True),
+            ("editor", "other", False, False),
+            ("viewer", "other", False, False),
+            ("manager", "deleted", False, True),
+            ("editor", "deleted", False, True),
+            ("viewer", "deleted", False, False),
+            ("editor", "self", True, True),
+            ("viewer", "self", False, False),
+        ]
+    )
+    def test_moderation_follows_experiment_access(
+        self, access_level: str, author: str, can_edit: bool, can_delete: bool
+    ) -> None:
+        AccessControl.objects.filter(team=self.team, resource="experiment", resource_id=str(self.granted.id)).update(
+            access_level=access_level
+        )
+        annotation = ExperimentVariantAnnotation.objects.create(
+            team=self.team,
+            experiment=self.granted,
+            created_by=self.user if author == "self" else self.granted.created_by if author == "other" else None,
+            variant_key="test",
+            content="Original note",
+        )
+        url = f"{self._url(self.granted)}{annotation.id}/"
+
+        body = self.client.get(url).json()
+        assert body["can_edit"] is can_edit
+        assert body["can_delete"] is can_delete
+        for method in ("patch", "put"):
+            response = getattr(self.client, method)(url, {"variant_key": "test", "content": "Changed"}, format="json")
+            assert response.status_code == (status.HTTP_200_OK if can_edit else status.HTTP_403_FORBIDDEN)
+        annotation.refresh_from_db()
+        assert annotation.content == ("Changed" if can_edit else "Original note")
+        response = self.client.delete(url)
+        assert response.status_code == (status.HTTP_204_NO_CONTENT if can_delete else status.HTTP_403_FORBIDDEN)
+        assert ExperimentVariantAnnotation.objects.filter(id=annotation.id).exists() is not can_delete

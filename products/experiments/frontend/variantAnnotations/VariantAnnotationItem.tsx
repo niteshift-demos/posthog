@@ -23,11 +23,12 @@ export function VariantAnnotationItem({
     canEdit: boolean
 }): JSX.Element {
     const logic = experimentVariantAnnotationsLogic({ experimentId })
-    const { editingAnnotation, pendingAction, currentUserId } = useValues(logic)
+    const { editingAnnotation, pendingAction } = useValues(logic)
     const { startEditing, setEditingAnnotation, cancelEditing, updateAnnotation, deleteAnnotation } = useActions(logic)
 
     const isEditing = editingAnnotation?.id === annotation.id
-    const canChange = canEdit && !!annotation.created_by && annotation.created_by.id === currentUserId
+    const canEditAnnotation = canEdit && annotation.can_edit
+    const canDeleteAnnotation = canEdit && annotation.can_delete
     const wasEdited = new Date(annotation.updated_at).getTime() - new Date(annotation.created_at).getTime() > 1000
 
     if (isEditing && editingAnnotation) {
@@ -81,16 +82,16 @@ export function VariantAnnotationItem({
         <div className="flex flex-col gap-1 py-2" data-attr="experiment-variant-annotation">
             <div className="flex items-center justify-between gap-2">
                 <VariantTag variantKey={annotation.variant_key} />
-                {canChange && (
+                {(canEditAnnotation || canDeleteAnnotation) && (
                     <LemonMenu
                         items={[
-                            {
+                            canEditAnnotation && {
                                 label: 'Edit',
                                 icon: <IconPencil />,
                                 onClick: () => startEditing(annotation),
                                 'data-attr': 'experiment-variant-annotation-edit',
                             },
-                            {
+                            canDeleteAnnotation && {
                                 label: 'Delete',
                                 icon: <IconTrash />,
                                 status: 'danger',
