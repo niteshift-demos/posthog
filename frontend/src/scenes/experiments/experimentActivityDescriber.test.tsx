@@ -22,6 +22,51 @@ const baseLogItem = (overrides: Partial<ActivityLogItem>): ActivityLogItem => ({
 })
 
 describe('experimentActivityDescriber', () => {
+    it.each([
+        ['created', 'added', null, { variant_key: 'test', content: '<script>Original note</script>' }],
+        [
+            'updated',
+            'edited',
+            { variant_key: 'control', content: 'Original note' },
+            { variant_key: 'test', content: 'Revised note' },
+        ],
+        ['deleted', 'deleted', { variant_key: 'test', content: 'Deleted note' }, null],
+    ])('describes a %s variant note with its content', (activity, verb, before, after) => {
+        const result = experimentActivityDescriber(
+            baseLogItem({
+                activity: `variant_annotation_${activity}`,
+                detail: {
+                    name: 'Checkout funnel',
+                    type: 'variant_annotation',
+                    changes: [
+                        {
+                            type: ActivityScope.EXPERIMENT,
+                            action: 'changed',
+                            field: 'variant_annotation',
+                            before,
+                            after,
+                        },
+                    ],
+                    merge: null,
+                    trigger: null,
+                },
+            })
+        )
+        expect(textOf(result).replace(/\s+/g, ' ')).toBe(
+            `Alice Adams ${verb} a note on variant test for Checkout funnel`
+        )
+        const { container } = render(<>{result.extendedDescription}</>)
+        for (const annotation of [before, after]) {
+            if (annotation) {
+                expect(container.textContent).toContain(annotation.content)
+                if (before && after) {
+                    expect(container.textContent).toContain(annotation.variant_key)
+                }
+            }
+        }
+        expect(container.querySelector('script')).toBeNull()
+    })
+
     describe('saved_metric_config rows', () => {
         it.each([
             {

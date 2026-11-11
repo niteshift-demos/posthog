@@ -5,6 +5,7 @@ from rest_framework import status
 
 from posthog.constants import AvailableFeature
 from posthog.models import Organization, OrganizationMembership, Team, User
+from posthog.models.activity_logging.activity_log import ActivityLog
 
 from products.experiments.backend.models.experiment import Experiment
 from products.experiments.backend.models.experiment_variant_annotation import ExperimentVariantAnnotation
@@ -111,6 +112,70 @@ class TestExperimentVariantAnnotationsAPI(APIBaseTest):
         assert response.status_code == status.HTTP_204_NO_CONTENT
         assert not ExperimentVariantAnnotation.objects.filter(id=created["id"]).exists()
 
+    def test_annotation_lifecycle_is_logged_under_parent_experiment(self) -> None:
+        with self.captureOnCommitCallbacks(execute=True):
+            created = self._create()
+        original = {"id": created["id"], "variant_key": "test", "content": "Test won on conversion"}
+        revised = {**original, "variant_key": "control", "content": "Revised note"}
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.patch(
+                self._url(self.experiment.id, created["id"]),
+                {"variant_key": "control", "content": "Revised note"},
+                format="json",
+            )
+        assert response.status_code == status.HTTP_200_OK
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.delete(self._url(self.experiment.id, created["id"]))
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+
+        logs = list(
+            ActivityLog.objects.filter(
+                team_id=self.team.id,
+                scope="Experiment",
+                item_id=str(self.experiment.id),
+                detail__type="variant_annotation",
+            ).order_by("created_at")
+        )
+        assert len(logs) == 3
+        for log, activity, action, before, after in zip(
+            logs,
+            ["created", "updated", "deleted"],
+            ["created", "changed", "deleted"],
+            [None, original, revised],
+            [original, revised, None],
+        ):
+            assert log.activity == f"variant_annotation_{activity}"
+            assert log.user_id == self.user.id
+            assert log.organization_id == self.organization.id
+            assert log.detail is not None
+            assert log.detail["name"] == self.experiment.name
+            assert log.detail["changes"] == [
+                {
+                    "type": "Experiment",
+                    "action": action,
+                    "field": "variant_annotation",
+                    "before": before,
+                    "after": after,
+                }
+            ]
+
+    def test_unchanged_note_does_not_add_history(self) -> None:
+        with self.captureOnCommitCallbacks(execute=True):
+            created = self._create()
+        before_count = ActivityLog.objects.count()
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.patch(
+                self._url(self.experiment.id, created["id"]),
+                {"content": created["content"]},
+                format="json",
+            )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert ActivityLog.objects.count() == before_count
+
     @parameterized.expand([("get",), ("patch",), ("delete",)])
     def test_annotation_is_not_reachable_through_another_experiments_url(self, method: str) -> None:
         sibling = _create_experiment(self.team, self.user, "sibling-flag")
@@ -166,18 +231,24 @@ class TestExperimentVariantAnnotationsAPI(APIBaseTest):
         assert response.json()["content"] == "Variant was rolled back"
 
     def test_only_author_can_change_annotation_but_teammates_can_read_it(self) -> None:
-        created = self._create()
+        with self.captureOnCommitCallbacks(execute=True):
+            created = self._create()
         teammate = User.objects.create_and_join(self.organization, "teammate@example.com", "password")
         self.client.force_login(teammate)
+        before_count = ActivityLog.objects.count()
 
         listed = self.client.get(self._url(self.experiment.id))
-        patched = self.client.patch(self._url(self.experiment.id, created["id"]), {"content": "mine"}, format="json")
-        deleted = self.client.delete(self._url(self.experiment.id, created["id"]))
+        with self.captureOnCommitCallbacks(execute=True):
+            patched = self.client.patch(
+                self._url(self.experiment.id, created["id"]), {"content": "mine"}, format="json"
+            )
+            deleted = self.client.delete(self._url(self.experiment.id, created["id"]))
 
         assert listed.status_code == status.HTTP_200_OK
         assert [a["id"] for a in listed.json()["results"]] == [created["id"]]
         assert patched.status_code == status.HTTP_403_FORBIDDEN
         assert deleted.status_code == status.HTTP_403_FORBIDDEN
+        assert ActivityLog.objects.count() == before_count
         assert ExperimentVariantAnnotation.objects.get(id=created["id"]).content == "Test won on conversion"
 
 

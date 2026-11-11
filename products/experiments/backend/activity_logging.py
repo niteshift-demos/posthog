@@ -1,11 +1,47 @@
-from typing import Any
+from typing import Any, Literal
 
-from posthog.models.activity_logging.activity_log import AuditableScope, Detail, changes_between, log_activity
+from posthog.models.activity_logging.activity_log import AuditableScope, Change, Detail, changes_between, log_activity
 from posthog.models.signals import model_activity_signal, mutable_receiver
 from posthog.models.user import User
 
 from products.experiments.backend.models.experiment import Experiment
 from products.experiments.backend.models.web_experiment import WebExperiment
+
+
+def log_variant_annotation_activity(
+    *,
+    experiment: Experiment,
+    user: User,
+    activity: Literal["created", "updated", "deleted"],
+    before: dict[str, str] | None,
+    after: dict[str, str] | None,
+    was_impersonated: bool,
+) -> None:
+    if before == after:
+        return
+
+    log_activity(
+        organization_id=experiment.team.organization_id,
+        team_id=experiment.team_id,
+        user=user,
+        was_impersonated=was_impersonated,
+        item_id=experiment.id,
+        scope="Experiment",
+        activity=f"variant_annotation_{activity}",
+        detail=Detail(
+            name=experiment.name,
+            type="variant_annotation",
+            changes=[
+                Change(
+                    type="Experiment",
+                    action="changed" if activity == "updated" else activity,
+                    field="variant_annotation",
+                    before=before,
+                    after=after,
+                )
+            ],
+        ),
+    )
 
 
 @mutable_receiver(model_activity_signal, sender=Experiment)
