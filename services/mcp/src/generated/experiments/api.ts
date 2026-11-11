@@ -3,7 +3,7 @@
  * MCP service uses these Zod schemas for generated tool handlers.
  * To regenerate: hogli build:openapi
  *
- * PostHog API - MCP 37 enabled ops
+ * PostHog API - MCP 41 enabled ops
  * OpenAPI spec version: 1.0.0
  */
 import * as zod from 'zod'
@@ -5811,6 +5811,103 @@ export const ExperimentsCreateBody = /* @__PURE__ */ zod
             ),
     })
     .describe('Experiment write payload. Identical to Experiment, plus the writable `feature_flag` config input.')
+
+/**
+ * List notes for all variants of this experiment, newest first. Requires read access to the experiment.
+ */
+export const ExperimentsVariantAnnotationsListParams = /* @__PURE__ */ zod.object({
+    experiment_id: zod.number().describe('ID of the experiment containing the variant notes.'),
+    project_id: zod
+        .string()
+        .describe(
+            "Project ID of the project you're trying to access. To find the ID of the project, make a call to \/api\/projects\/."
+        ),
+})
+
+export const ExperimentsVariantAnnotationsListQueryParams = /* @__PURE__ */ zod.object({
+    limit: zod.number().optional().describe('Number of results to return per page.'),
+    offset: zod.number().optional().describe('The initial index from which to return the results.'),
+})
+
+/**
+ * Add a note to an existing feature flag variant of this experiment. Requires edit access to the experiment. The authenticated user becomes the author.
+ */
+export const ExperimentsVariantAnnotationsCreateParams = /* @__PURE__ */ zod.object({
+    experiment_id: zod.number().describe('ID of the experiment containing the variant notes.'),
+    project_id: zod
+        .string()
+        .describe(
+            "Project ID of the project you're trying to access. To find the ID of the project, make a call to \/api\/projects\/."
+        ),
+})
+
+export const experimentsVariantAnnotationsCreateBodyVariantKeyMax = 400
+
+export const experimentsVariantAnnotationsCreateBodyContentMax = 5000
+
+export const ExperimentsVariantAnnotationsCreateBody = /* @__PURE__ */ zod.object({
+    variant_key: zod
+        .string()
+        .max(experimentsVariantAnnotationsCreateBodyVariantKeyMax)
+        .describe(
+            "Key of the experiment variant this note is about, e.g. 'control' or 'test'. Must be one of the experiment's feature flag variants."
+        ),
+    content: zod
+        .string()
+        .min(1)
+        .max(experimentsVariantAnnotationsCreateBodyContentMax)
+        .describe(
+            'Non-empty note text, up to 5000 characters. Records context or a decision about this variant separately from the experiment conclusion.'
+        ),
+})
+
+/**
+ * Edit a note you authored. Send only fields to change; omitted fields stay unchanged. Requires edit access to the experiment.
+ */
+export const ExperimentsVariantAnnotationsPartialUpdateParams = /* @__PURE__ */ zod.object({
+    experiment_id: zod.number().describe('ID of the experiment containing the variant notes.'),
+    id: zod.string().describe('A UUID string identifying this experiment variant annotation.'),
+    project_id: zod
+        .string()
+        .describe(
+            "Project ID of the project you're trying to access. To find the ID of the project, make a call to \/api\/projects\/."
+        ),
+})
+
+export const experimentsVariantAnnotationsPartialUpdateBodyVariantKeyMax = 400
+
+export const experimentsVariantAnnotationsPartialUpdateBodyContentMax = 5000
+
+export const ExperimentsVariantAnnotationsPartialUpdateBody = /* @__PURE__ */ zod.object({
+    variant_key: zod
+        .string()
+        .max(experimentsVariantAnnotationsPartialUpdateBodyVariantKeyMax)
+        .optional()
+        .describe(
+            "Key of the experiment variant this note is about, e.g. 'control' or 'test'. Must be one of the experiment's feature flag variants."
+        ),
+    content: zod
+        .string()
+        .min(1)
+        .max(experimentsVariantAnnotationsPartialUpdateBodyContentMax)
+        .optional()
+        .describe(
+            'Non-empty note text, up to 5000 characters. Records context or a decision about this variant separately from the experiment conclusion.'
+        ),
+})
+
+/**
+ * Permanently delete a note you authored. Requires edit access to the experiment.
+ */
+export const ExperimentsVariantAnnotationsDestroyParams = /* @__PURE__ */ zod.object({
+    experiment_id: zod.number().describe('ID of the experiment containing the variant notes.'),
+    id: zod.string().describe('A UUID string identifying this experiment variant annotation.'),
+    project_id: zod
+        .string()
+        .describe(
+            "Project ID of the project you're trying to access. To find the ID of the project, make a call to \/api\/projects\/."
+        ),
+})
 
 /**
  * Retrieve a single experiment by ID, including its current status, metrics, feature flag, and results metadata.

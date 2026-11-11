@@ -49,6 +49,13 @@ import {
     ExperimentsTimeseriesResultsRetrieveQueryParams,
     ExperimentsUnarchiveCreateParams,
     ExperimentsUnfreezeExposureCreateParams,
+    ExperimentsVariantAnnotationsCreateBody,
+    ExperimentsVariantAnnotationsCreateParams,
+    ExperimentsVariantAnnotationsDestroyParams,
+    ExperimentsVariantAnnotationsListParams,
+    ExperimentsVariantAnnotationsListQueryParams,
+    ExperimentsVariantAnnotationsPartialUpdateBody,
+    ExperimentsVariantAnnotationsPartialUpdateParams,
 } from '@/generated/experiments/api'
 import { withUiApp } from '@/resources/ui-apps'
 import { SavedMetricsAttachSchema } from '@/schema/tool-inputs'
@@ -1293,6 +1300,139 @@ const experimentsSessionEventDeltasCreate = (): ToolBase<
     },
 })
 
+const ExperimentVariantAnnotationCreateSchema = ExperimentsVariantAnnotationsCreateParams.omit({ project_id: true })
+    .extend(ExperimentsVariantAnnotationsCreateBody.shape)
+    .extend({
+        experiment_id: z.preprocess(
+            castStringToInt,
+            ExperimentsVariantAnnotationsCreateParams.shape['experiment_id'].describe(
+                'ID of the experiment to annotate. Resolve the experiment with experiment-get or experiment-list first if needed.'
+            )
+        ),
+    })
+
+const experimentVariantAnnotationCreate = (): ToolBase<
+    typeof ExperimentVariantAnnotationCreateSchema,
+    Schemas.ExperimentVariantAnnotation
+> => ({
+    name: 'experiment-variant-annotation-create',
+    schema: ExperimentVariantAnnotationCreateSchema,
+    handler: async (context: Context, params: z.infer<typeof ExperimentVariantAnnotationCreateSchema>) => {
+        const projectId = await context.stateManager.getProjectId()
+        const body: Record<string, unknown> = {}
+        if (params.variant_key !== undefined) {
+            body['variant_key'] = params.variant_key
+        }
+        if (params.content !== undefined) {
+            body['content'] = params.content
+        }
+        const result = await context.api.request<Schemas.ExperimentVariantAnnotation>({
+            method: 'POST',
+            path: `/api/projects/${encodeURIComponent(String(projectId))}/experiments/${encodeURIComponent(String(params.experiment_id))}/variant_annotations/`,
+            body,
+        })
+        return result
+    },
+})
+
+const ExperimentVariantAnnotationDeleteSchema = ExperimentsVariantAnnotationsDestroyParams.omit({
+    project_id: true,
+}).extend({
+    experiment_id: z.preprocess(
+        castStringToInt,
+        ExperimentsVariantAnnotationsDestroyParams.shape['experiment_id'].describe(
+            'ID of the experiment containing the note.'
+        )
+    ),
+    id: ExperimentsVariantAnnotationsDestroyParams.shape['id'].describe(
+        'UUID of the note to delete, returned by experiment-variant-annotations-list or experiment-variant-annotation-create.'
+    ),
+})
+
+const experimentVariantAnnotationDelete = (): ToolBase<typeof ExperimentVariantAnnotationDeleteSchema, unknown> => ({
+    name: 'experiment-variant-annotation-delete',
+    schema: ExperimentVariantAnnotationDeleteSchema,
+    handler: async (context: Context, params: z.infer<typeof ExperimentVariantAnnotationDeleteSchema>) => {
+        const projectId = await context.stateManager.getProjectId()
+        const result = await context.api.request<unknown>({
+            method: 'DELETE',
+            path: `/api/projects/${encodeURIComponent(String(projectId))}/experiments/${encodeURIComponent(String(params.experiment_id))}/variant_annotations/${encodeURIComponent(String(params.id))}/`,
+        })
+        return result
+    },
+})
+
+const ExperimentVariantAnnotationsListSchema = ExperimentsVariantAnnotationsListParams.omit({ project_id: true })
+    .extend(ExperimentsVariantAnnotationsListQueryParams.shape)
+    .extend({
+        experiment_id: z.preprocess(
+            castStringToInt,
+            ExperimentsVariantAnnotationsListParams.shape['experiment_id'].describe(
+                'ID of the experiment whose variant notes to list.'
+            )
+        ),
+    })
+
+const experimentVariantAnnotationsList = (): ToolBase<
+    typeof ExperimentVariantAnnotationsListSchema,
+    Schemas.PaginatedExperimentVariantAnnotationList
+> => ({
+    name: 'experiment-variant-annotations-list',
+    schema: ExperimentVariantAnnotationsListSchema,
+    handler: async (context: Context, params: z.infer<typeof ExperimentVariantAnnotationsListSchema>) => {
+        const projectId = await context.stateManager.getProjectId()
+        const result = await context.api.request<Schemas.PaginatedExperimentVariantAnnotationList>({
+            method: 'GET',
+            path: `/api/projects/${encodeURIComponent(String(projectId))}/experiments/${encodeURIComponent(String(params.experiment_id))}/variant_annotations/`,
+            query: {
+                limit: params.limit,
+                offset: params.offset,
+            },
+        })
+        return result
+    },
+})
+
+const ExperimentVariantAnnotationUpdateSchema = ExperimentsVariantAnnotationsPartialUpdateParams.omit({
+    project_id: true,
+})
+    .extend(ExperimentsVariantAnnotationsPartialUpdateBody.shape)
+    .extend({
+        experiment_id: z.preprocess(
+            castStringToInt,
+            ExperimentsVariantAnnotationsPartialUpdateParams.shape['experiment_id'].describe(
+                'ID of the experiment containing the note.'
+            )
+        ),
+        id: ExperimentsVariantAnnotationsPartialUpdateParams.shape['id'].describe(
+            'UUID of the note to edit, returned by experiment-variant-annotations-list or experiment-variant-annotation-create.'
+        ),
+    })
+
+const experimentVariantAnnotationUpdate = (): ToolBase<
+    typeof ExperimentVariantAnnotationUpdateSchema,
+    Schemas.ExperimentVariantAnnotation
+> => ({
+    name: 'experiment-variant-annotation-update',
+    schema: ExperimentVariantAnnotationUpdateSchema,
+    handler: async (context: Context, params: z.infer<typeof ExperimentVariantAnnotationUpdateSchema>) => {
+        const projectId = await context.stateManager.getProjectId()
+        const body: Record<string, unknown> = {}
+        if (params.variant_key !== undefined) {
+            body['variant_key'] = params.variant_key
+        }
+        if (params.content !== undefined) {
+            body['content'] = params.content
+        }
+        const result = await context.api.request<Schemas.ExperimentVariantAnnotation>({
+            method: 'PATCH',
+            path: `/api/projects/${encodeURIComponent(String(projectId))}/experiments/${encodeURIComponent(String(params.experiment_id))}/variant_annotations/${encodeURIComponent(String(params.id))}/`,
+            body,
+        })
+        return result
+    },
+})
+
 export const GENERATED_TOOLS: Record<string, () => ToolBase<ZodObjectAny>> = {
     'experiment-activity': experimentActivity,
     'experiment-archive': experimentArchive,
@@ -1331,4 +1471,8 @@ export const GENERATED_TOOLS: Record<string, () => ToolBase<ZodObjectAny>> = {
     'experiment-unfreeze-exposure': experimentUnfreezeExposure,
     'experiment-update': experimentUpdate,
     'experiments-session-event-deltas-create': experimentsSessionEventDeltasCreate,
+    'experiment-variant-annotation-create': experimentVariantAnnotationCreate,
+    'experiment-variant-annotation-delete': experimentVariantAnnotationDelete,
+    'experiment-variant-annotations-list': experimentVariantAnnotationsList,
+    'experiment-variant-annotation-update': experimentVariantAnnotationUpdate,
 }

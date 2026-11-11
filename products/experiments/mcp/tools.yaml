@@ -1397,18 +1397,82 @@ tools:
     experiments-update:
         operation: experiments_update
         enabled: false
-    experiments-variant-annotations-create:
+    experiment-variant-annotation-create:
         operation: experiments_variant_annotations_create
-        enabled: false
-    experiments-variant-annotations-destroy:
+        enabled: true
+        scopes:
+            - experiment:write
+        annotations:
+            readOnly: false
+            destructive: false
+            idempotent: false
+        title: Add a note to an experiment variant
+        description: >
+            Add a persistent note to a variant of an experiment. Use experiment-get to find the experiment's
+            feature flag variant keys, then pass the exact key (for example, control or test) and note text.
+            Requires edit access to the experiment. The authenticated user becomes the author.
+            Notes record context and decisions separately from the experiment conclusion.
+        param_overrides:
+            experiment_id:
+                description: ID of the experiment to annotate. Resolve the experiment with experiment-get or experiment-list first if needed.
+                cast: string-int
+    experiment-variant-annotation-delete:
         operation: experiments_variant_annotations_destroy
-        enabled: false
-    experiments-variant-annotations-list:
+        enabled: true
+        scopes:
+            - experiment:write
+        annotations:
+            readOnly: false
+            destructive: true
+            idempotent: true
+        title: Delete an experiment variant note
+        description: >
+            Permanently delete a variant note you authored. Requires edit access to its experiment.
+            Use experiment-variant-annotations-list to find the note's UUID and parent experiment ID.
+        param_overrides:
+            experiment_id:
+                description: ID of the experiment containing the note.
+                cast: string-int
+            id:
+                description: UUID of the note to delete, returned by experiment-variant-annotations-list or experiment-variant-annotation-create.
+    experiment-variant-annotations-list:
         operation: experiments_variant_annotations_list
-        enabled: false
-    experiments-variant-annotations-partial-update:
+        enabled: true
+        scopes:
+            - experiment:read
+        annotations:
+            readOnly: true
+            destructive: false
+            idempotent: true
+        title: List experiment variant notes
+        description: >
+            List notes for all variants of an experiment, newest first. Each note includes its UUID, variant key,
+            text, author, and timestamps. Requires read access to the experiment. Follow pagination to see all notes.
+            Use the variant_key on each note to find notes for a particular variant.
+        param_overrides:
+            experiment_id:
+                description: ID of the experiment whose variant notes to list.
+                cast: string-int
+    experiment-variant-annotation-update:
         operation: experiments_variant_annotations_partial_update
-        enabled: false
+        enabled: true
+        scopes:
+            - experiment:write
+        annotations:
+            readOnly: false
+            destructive: false
+            idempotent: true
+        title: Edit an experiment variant note
+        description: >
+            Edit a variant note you authored. Requires edit access to its experiment. Send content to change the text
+            or variant_key to move the note to another existing variant. Omitted fields stay unchanged.
+            Use experiment-variant-annotations-list to find the note's UUID and parent experiment ID.
+        param_overrides:
+            experiment_id:
+                description: ID of the experiment containing the note.
+                cast: string-int
+            id:
+                description: UUID of the note to edit, returned by experiment-variant-annotations-list or experiment-variant-annotation-create.
     experiments-variant-annotations-retrieve:
         operation: experiments_variant_annotations_retrieve
         enabled: false

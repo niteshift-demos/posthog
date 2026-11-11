@@ -358,7 +358,7 @@ export const getExperimentsVariantAnnotationsListUrl = (
 }
 
 /**
- * Notes pinned to individual variants of an experiment, kept separate from its recorded conclusion.
+ * List notes for all variants of this experiment, newest first. Requires read access to the experiment.
  */
 export const experimentsVariantAnnotationsList = async (
     projectId: string,
@@ -380,7 +380,7 @@ export const getExperimentsVariantAnnotationsCreateUrl = (projectId: string, exp
 }
 
 /**
- * Notes pinned to individual variants of an experiment, kept separate from its recorded conclusion.
+ * Add a note to an existing feature flag variant of this experiment. Requires edit access to the experiment. The authenticated user becomes the author.
  */
 export const experimentsVariantAnnotationsCreate = async (
     projectId: string,
@@ -455,7 +455,7 @@ export const getExperimentsVariantAnnotationsPartialUpdateUrl = (
 }
 
 /**
- * Notes pinned to individual variants of an experiment, kept separate from its recorded conclusion.
+ * Edit a note you authored. Send only fields to change; omitted fields stay unchanged. Requires edit access to the experiment.
  */
 export const experimentsVariantAnnotationsPartialUpdate = async (
     projectId: string,
@@ -480,7 +480,7 @@ export const getExperimentsVariantAnnotationsDestroyUrl = (projectId: string, ex
 }
 
 /**
- * Notes pinned to individual variants of an experiment, kept separate from its recorded conclusion.
+ * Permanently delete a note you authored. Requires edit access to the experiment.
  */
 export const experimentsVariantAnnotationsDestroy = async (
     projectId: string,
