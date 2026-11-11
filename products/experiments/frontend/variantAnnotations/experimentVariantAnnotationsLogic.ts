@@ -42,6 +42,7 @@ const fetchAnnotations = async (experimentId: number): Promise<ExperimentVariant
 export interface experimentVariantAnnotationsLogicValues {
     user: UserType | null // userLogic
     annotations: ExperimentVariantAnnotationApi[] | null
+    annotationsByVariant: Record<string, ExperimentVariantAnnotationApi[]>
     annotationsLoading: boolean
     canSubmitDraft: boolean
     currentUserId: number | null
@@ -146,6 +147,9 @@ export interface experimentVariantAnnotationsLogicActions {
 export interface experimentVariantAnnotationsLogicMeta {
     key: number
     __keaTypeGenInternalSelectorTypes: {
+        annotationsByVariant: (
+            annotations: ExperimentVariantAnnotationApi[] | null
+        ) => Record<string, ExperimentVariantAnnotationApi[]>
         canSubmitDraft: (draftVariantKey: string | null, draftContent: string) => boolean
         currentUserId: (user: UserType | null) => number | null
     }
@@ -268,6 +272,22 @@ export const experimentVariantAnnotationsLogic = kea<experimentVariantAnnotation
     })),
 
     selectors({
+        annotationsByVariant: [
+            (s) => [s.annotations],
+            (
+                annotations: ExperimentVariantAnnotationApi[] | null
+            ): Record<string, ExperimentVariantAnnotationApi[]> => {
+                const grouped: Record<string, ExperimentVariantAnnotationApi[]> = Object.create(null)
+                for (const annotation of annotations ?? []) {
+                    const notes = (grouped[annotation.variant_key] ??= [])
+                    notes.push(annotation)
+                }
+                for (const notes of Object.values(grouped)) {
+                    notes.sort((a, b) => b.created_at.localeCompare(a.created_at))
+                }
+                return grouped
+            },
+        ],
         canSubmitDraft: [
             (s) => [s.draftVariantKey, s.draftContent],
             (draftVariantKey: string | null, draftContent: string): boolean =>

@@ -13,7 +13,6 @@ import { LemonCollapse } from 'lib/lemon-ui/LemonCollapse'
 import { LemonSkeleton } from 'lib/lemon-ui/LemonSkeleton'
 import { featureFlagLogic } from 'lib/logic/featureFlagLogic'
 import { humanFriendlyLargeNumber } from 'lib/utils/numbers'
-import { VariantTag } from 'scenes/experiments/ExperimentView/VariantTag'
 import { BreakdownTag } from 'scenes/insights/filters/BreakdownFilter/BreakdownTag'
 import { formatBreakdownLabel } from 'scenes/insights/utils'
 
@@ -54,6 +53,8 @@ import {
     isWinning,
 } from '~/scenes/experiments/MetricsView/shared/utils'
 import { Experiment, InsightType } from '~/types'
+
+import { VariantWithAnnotations } from 'products/experiments/frontend/variantAnnotations/VariantWithAnnotations'
 
 import { ChartCell } from './ChartCell'
 import {
@@ -287,7 +288,10 @@ function CollapsibleBreakdownSection({
                                                                     className={`w-20 pt-1 pl-3 pr-3 pb-1 whitespace-nowrap overflow-hidden ${isAlternatingRow ? 'bg-bg-table' : 'bg-bg-light'}`}
                                                                     style={FIXED_HEIGHT_STYLE}
                                                                 >
-                                                                    <VariantTag variantKey={baselineResult.key} />
+                                                                    <VariantWithAnnotations
+                                                                        experimentId={Number(experiment.id)}
+                                                                        variantKey={baselineResult.key}
+                                                                    />
                                                                 </td>
 
                                                                 <td
@@ -396,7 +400,10 @@ function CollapsibleBreakdownSection({
                                                                                     backgroundImage: rowBackgroundImage,
                                                                                 }}
                                                                             >
-                                                                                <VariantTag variantKey={variant.key} />
+                                                                                <VariantWithAnnotations
+                                                                                    experimentId={Number(experiment.id)}
+                                                                                    variantKey={variant.key}
+                                                                                />
                                                                             </td>
 
                                                                             <td
@@ -984,7 +991,7 @@ export function MetricRowGroup({
                     } ${variantResults.length === 0 ? 'border-b' : ''}`}
                     style={FIXED_HEIGHT_STYLE}
                 >
-                    <VariantTag variantKey={baselineResult.key} />
+                    <VariantWithAnnotations experimentId={Number(experiment.id)} variantKey={baselineResult.key} />
                 </td>
 
                 {/* Value */}
@@ -1108,7 +1115,7 @@ export function MetricRowGroup({
                             } ${isLastRow ? 'border-b' : ''}`}
                             style={{ ...FIXED_HEIGHT_STYLE, backgroundImage: rowBackgroundImage }}
                         >
-                            <VariantTag variantKey={variant.key} />
+                            <VariantWithAnnotations experimentId={Number(experiment.id)} variantKey={variant.key} />
                         </td>
 
                         {/* Value */}
