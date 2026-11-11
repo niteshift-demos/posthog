@@ -22,7 +22,7 @@ export function VariantAnnotationItem({
     variantKeys: string[]
     canEdit: boolean
 }): JSX.Element {
-    const logic = experimentVariantAnnotationsLogic({ experimentId })
+    const logic = experimentVariantAnnotationsLogic({ experimentId, variantKeys })
     const { editingAnnotation, pendingAction, currentUserId } = useValues(logic)
     const { startEditing, setEditingAnnotation, cancelEditing, updateAnnotation, deleteAnnotation } = useActions(logic)
 

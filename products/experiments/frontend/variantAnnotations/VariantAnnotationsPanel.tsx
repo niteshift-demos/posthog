@@ -1,6 +1,6 @@
 import { useActions, useValues } from 'kea'
 
-import { LemonButton, LemonDivider, LemonSkeleton } from '@posthog/lemon-ui'
+import { LemonButton, LemonDivider, LemonSelect, LemonSkeleton } from '@posthog/lemon-ui'
 
 import { experimentVariantAnnotationsLogic } from './experimentVariantAnnotationsLogic'
 import { VariantAnnotationComposer } from './VariantAnnotationComposer'
@@ -15,9 +15,10 @@ export function VariantAnnotationsPanel({
     variantKeys: string[]
     canEdit: boolean
 }): JSX.Element {
-    const logic = experimentVariantAnnotationsLogic({ experimentId })
-    const { annotations, annotationsLoading } = useValues(logic)
-    const { loadAnnotations } = useActions(logic)
+    const logic = experimentVariantAnnotationsLogic({ experimentId, variantKeys })
+    const { annotations, annotationsLoading, filteredAnnotations, variantFilter, variantFilterOptions } =
+        useValues(logic)
+    const { loadAnnotations, setVariantFilter } = useActions(logic)
 
     return (
         <div
@@ -38,7 +39,17 @@ export function VariantAnnotationsPanel({
                 </p>
             )}
             <LemonDivider className="my-0" />
-            {annotations === null ? (
+            <LemonSelect
+                size="small"
+                aria-label="Filter annotations by variant"
+                value={variantFilter}
+                onChange={setVariantFilter}
+                options={variantFilterOptions}
+                disabledReason={annotations === null ? 'Wait for annotations to load' : undefined}
+                data-attr="experiment-variant-annotation-filter"
+                fullWidth
+            />
+            {filteredAnnotations === null ? (
                 annotationsLoading ? (
                     <div className="flex flex-col gap-2 py-2">
                         <LemonSkeleton className="h-4 w-1/3" />
@@ -52,13 +63,15 @@ export function VariantAnnotationsPanel({
                         </LemonButton>
                     </div>
                 )
-            ) : annotations.length === 0 ? (
+            ) : filteredAnnotations.length === 0 ? (
                 <p className="m-0 py-2 text-sm text-secondary">
-                    No annotations yet. Pick a variant and write a note to record decisions next to the results.
+                    {variantFilter !== null
+                        ? `No annotations for ${variantFilter} yet. Add a note or choose another variant.`
+                        : 'No annotations yet. Pick a variant and write a note to record decisions next to the results.'}
                 </p>
             ) : (
                 <div className="flex flex-col divide-y divide-primary">
-                    {annotations.map((annotation) => (
+                    {filteredAnnotations.map((annotation) => (
                         <VariantAnnotationItem
                             key={annotation.id}
                             experimentId={experimentId}
