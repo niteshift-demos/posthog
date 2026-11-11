@@ -235,7 +235,7 @@
  */
 [data-quill] [data-not-quill] {
     --muted-3000: var(--muted-3000-light);
-    --color-bg-primary: var(--color-orange-300);
+    --color-bg-primary: var(--color-posthog-3000-50);
     --color-bg-surface-primary: var(--color-white);
     --color-bg-surface-secondary: var(--color-posthog-3000-100);
     --color-bg-surface-tertiary: var(--color-posthog-3000-150);
@@ -262,7 +262,7 @@
 
 [theme='dark'] [data-quill] [data-not-quill] {
     --muted-3000: var(--muted-3000-dark);
-    --color-bg-primary: var(--color-orange-950);
+    --color-bg-primary: var(--color-neutral-cool-950);
     --color-bg-surface-primary: var(--color-neutral-cool-850);
     --color-bg-surface-secondary: var(--color-neutral-cool-900);
     --color-bg-surface-tertiary: var(--color-neutral-cool-950);

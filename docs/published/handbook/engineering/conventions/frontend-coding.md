@@ -57,7 +57,6 @@ Hence the explicit separation between the data and view layers.
   - Take the time and read through [the Kea docs](https://keajs.org/) until you can explain how all the various operations (actions, reducers, selectors, listeners, subscriptions, props, events, hooks, etc) work behind the scenes. It's worth knowing your tools.
 - CSS
   - We use Tailwind CSS wherever possible
-  - Shared page backgrounds use `--color-bg-primary`, with orange-300 in light mode and orange-950 in dark mode. Keep cards and inputs on their surface and fill tokens.
   - Where it's not possible
     - We use regular SCSS files for styling to keep things simple and maintainable in the long run, as opposed to supporting the CSS-in-JS flavour of the month.
     - Inside `MyBlogComponent.tsx` import `MyBlogComponent.scss`
