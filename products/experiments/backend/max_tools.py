@@ -187,10 +187,12 @@ EXPERIMENT_SUMMARY_TOOL_DESCRIPTION = dedent("""
     - The user asks about A/B test performance or metrics
     - The user wants to know if their experiment is statistically significant
     - The user asks for insights or recommendations based on experiment data
+    - The user asks about human notes or decisions recorded on experiment variants
 
     # What this tool returns
     Returns formatted experiment data including:
     - Experiment metadata (name, description, variants)
+    - Recent human notes per variant with author and date, separate from the recorded conclusion
     - Exposure data (sample sizes per variant)
     - Primary and secondary metrics results with statistical measures
     - For Bayesian experiments: chance to win, credible intervals, significance
