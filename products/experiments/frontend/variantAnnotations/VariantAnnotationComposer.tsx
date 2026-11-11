@@ -11,7 +11,7 @@ export function VariantAnnotationComposer({
     experimentId: number
     variantKeys: string[]
 }): JSX.Element {
-    const logic = experimentVariantAnnotationsLogic({ experimentId })
+    const logic = experimentVariantAnnotationsLogic({ experimentId, variantKeys })
     const { draftVariantKey, draftContent, canSubmitDraft, pendingAction } = useValues(logic)
     const { setDraftVariantKey, setDraftContent, createAnnotation } = useActions(logic)
 
