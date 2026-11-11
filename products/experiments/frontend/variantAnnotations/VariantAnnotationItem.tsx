@@ -1,15 +1,17 @@
 import { useActions, useValues } from 'kea'
 
 import { IconEllipsis, IconPencil, IconTrash } from '@posthog/icons'
-import { LemonButton, LemonDialog, LemonMenu, LemonSelect, LemonTextArea, ProfilePicture } from '@posthog/lemon-ui'
+import { LemonButton, LemonDialog, LemonMenu, LemonSelect, ProfilePicture } from '@posthog/lemon-ui'
 
 import { TZLabel } from 'lib/components/TZLabel'
+import { LemonMarkdown } from 'lib/lemon-ui/LemonMarkdown'
 import { VariantTag } from 'scenes/experiments/ExperimentView/VariantTag'
 
 import type { UserBasicType } from '~/types'
 
 import type { ExperimentVariantAnnotationApi } from '../generated/api.schemas'
 import { MAX_ANNOTATION_LENGTH, experimentVariantAnnotationsLogic } from './experimentVariantAnnotationsLogic'
+import { VariantAnnotationEditor } from './VariantAnnotationEditor'
 
 export function VariantAnnotationItem({
     experimentId,
@@ -24,7 +26,8 @@ export function VariantAnnotationItem({
 }): JSX.Element {
     const logic = experimentVariantAnnotationsLogic({ experimentId })
     const { editingAnnotation, pendingAction, currentUserId } = useValues(logic)
-    const { startEditing, setEditingAnnotation, cancelEditing, updateAnnotation, deleteAnnotation } = useActions(logic)
+    const { startEditing, setEditingAnnotation, cancelEditing, submitEditingAnnotation, deleteAnnotation } =
+        useActions(logic)
 
     const isEditing = editingAnnotation?.id === annotation.id
     const canChange = canEdit && !!annotation.created_by && annotation.created_by.id === currentUserId
@@ -40,18 +43,7 @@ export function VariantAnnotationItem({
                     options={variantKeys.map((key) => ({ value: key, label: key }))}
                     fullWidth
                 />
-                <LemonTextArea
-                    value={editingAnnotation.content}
-                    onChange={(content) => setEditingAnnotation({ content })}
-                    onPressCmdEnter={() => {
-                        if (editingAnnotation.content.trim() && !pendingAction) {
-                            updateAnnotation(editingAnnotation)
-                        }
-                    }}
-                    minRows={2}
-                    maxLength={MAX_ANNOTATION_LENGTH}
-                    autoFocus
-                />
+                <VariantAnnotationEditor experimentId={experimentId} editing onSubmit={submitEditingAnnotation} />
                 <div className="flex justify-end gap-2">
                     <LemonButton type="secondary" size="small" onClick={cancelEditing}>
                         Cancel
@@ -59,14 +51,16 @@ export function VariantAnnotationItem({
                     <LemonButton
                         type="primary"
                         size="small"
-                        onClick={() => updateAnnotation(editingAnnotation)}
+                        onClick={submitEditingAnnotation}
                         loading={pendingAction === 'update'}
                         disabledReason={
                             pendingAction && pendingAction !== 'update'
                                 ? 'Wait for the current change to save'
                                 : !editingAnnotation.content.trim()
                                   ? 'Write a note first'
-                                  : undefined
+                                  : editingAnnotation.content.length > MAX_ANNOTATION_LENGTH
+                                    ? 'Keep the note within 5,000 characters'
+                                    : undefined
                         }
                         data-attr="experiment-variant-annotation-save"
                     >
@@ -119,7 +113,9 @@ export function VariantAnnotationItem({
                     </LemonMenu>
                 )}
             </div>
-            <p className="m-0 text-sm whitespace-pre-wrap break-words">{annotation.content}</p>
+            <LemonMarkdown className="text-sm break-words" lowKeyHeadings disableImages>
+                {annotation.content}
+            </LemonMarkdown>
             <div className="flex items-center gap-1 text-xs text-secondary">
                 {annotation.created_by ? (
                     <ProfilePicture user={annotation.created_by as UserBasicType} showName size="xs" />

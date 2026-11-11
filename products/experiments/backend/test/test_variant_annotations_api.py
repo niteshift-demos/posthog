@@ -1,4 +1,7 @@
 from posthog.test.base import APIBaseTest
+from unittest.mock import patch
+
+from django.test import SimpleTestCase
 
 from parameterized import parameterized
 from rest_framework import status
@@ -8,7 +11,9 @@ from posthog.models import Organization, OrganizationMembership, Team, User
 
 from products.experiments.backend.models.experiment import Experiment
 from products.experiments.backend.models.experiment_variant_annotation import ExperimentVariantAnnotation
+from products.experiments.backend.variant_annotations import annotation_mention_ids
 from products.feature_flags.backend.models.feature_flag import FeatureFlag
+from products.notifications.backend.models import NotificationEvent
 
 from ee.api.test.base import APILicensedTest
 from ee.models.rbac.access_control import AccessControl
@@ -30,6 +35,12 @@ def _create_experiment(team: Team, user: User, flag_key: str, deleted: bool | No
         },
     )
     return Experiment.objects.create(team=team, created_by=user, feature_flag=flag, name=flag_key, deleted=deleted)
+
+
+class TestAnnotationMarkdownMentions(SimpleTestCase):
+    @parameterized.expand([("~~@member:42~~",), ("| Reviewer |\n| --- |\n|@member:42|",)])
+    def test_mentions_in_gfm_formatting_match_the_renderer(self, content: str) -> None:
+        assert annotation_mention_ids(content) == {42}
 
 
 class TestExperimentVariantAnnotationsAPI(APIBaseTest):
@@ -60,6 +71,39 @@ class TestExperimentVariantAnnotationsAPI(APIBaseTest):
         own = self.client.get(self._url(self.experiment.id)).json()["results"]
         assert [a["id"] for a in own] == [created["id"]]
         assert self.client.get(self._url(sibling.id)).json()["results"] == []
+
+    @patch("posthoganalytics.feature_enabled", return_value=True)
+    def test_mentions_notify_once_and_edits_only_notify_new_recipients(self, _flag: object) -> None:
+        first = User.objects.create_and_join(self.organization, "first@example.com", "password")
+        second = User.objects.create_and_join(self.organization, "second@example.com", "password")
+        content = f"**Review** @member:{first.id} and @member:{first.id} @member:{self.user.id}"
+        created = self._create(content=content)
+        event = NotificationEvent.objects.get()
+        assert event.resolved_user_ids == [first.id]
+        assert event.source_url == f"/project/{self.team.id}/experiments/{self.experiment.id}"
+        assert event.resource_type == "experiment"
+        assert event.body == f"{self.experiment.name} (test)"
+
+        for updated_content in (content + " revised", content + f" @member:{second.id}"):
+            response = self.client.patch(
+                self._url(self.experiment.id, created["id"]), {"content": updated_content}, format="json"
+            )
+            assert response.status_code == status.HTTP_200_OK
+        assert list(NotificationEvent.objects.order_by("created_at").values_list("resolved_user_ids", flat=True)) == [
+            [first.id],
+            [second.id],
+        ]
+
+    @patch("posthoganalytics.feature_enabled", return_value=True)
+    def test_mentions_ignore_code_link_destinations_and_non_members(self, _flag: object) -> None:
+        teammate = User.objects.create_and_join(self.organization, "teammate@example.com", "password")
+        outsider = User.objects.create_user("outsider@example.com", "password", first_name="Outside member")
+        self._create(
+            content=f"`@member:{teammate.id}`\n\n```\n@member:{teammate.id}\n```\n\n"
+            f"[link](https://example.com/@member:{teammate.id}) @member:{outsider.id} @member:999999999"
+            f" @member:{'9' * 4500}"
+        )
+        assert not NotificationEvent.objects.exists()
 
     @parameterized.expand([("create",), ("update",)])
     def test_unknown_variant_key_is_rejected(self, action: str) -> None:
@@ -219,3 +263,23 @@ class TestExperimentVariantAnnotationsAccessControl(APILicensedTest):
     def test_viewer_can_list_annotations(self) -> None:
         response = self.client.get(self._url(self.restricted))
         assert response.status_code == status.HTTP_200_OK
+
+    @parameterized.expand([("project",), ("experiment",)])
+    @patch("posthoganalytics.feature_enabled", return_value=True)
+    def test_mentions_do_not_notify_users_without_access(self, resource: str, _flag: object) -> None:
+        recipient = User.objects.create_and_join(self.organization, "recipient@example.com", "password")
+        membership = OrganizationMembership.objects.get(organization=self.organization, user=recipient)
+        AccessControl.objects.create(
+            team=self.team,
+            resource=resource,
+            resource_id=str(self.team.id if resource == "project" else self.granted.id),
+            organization_member=membership,
+            access_level="none",
+        )
+        response = self.client.post(
+            self._url(self.granted),
+            {"variant_key": "test", "content": f"Please review @member:{recipient.id}"},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_201_CREATED, response.json()
+        assert not NotificationEvent.objects.exists()

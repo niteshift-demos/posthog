@@ -2,6 +2,7 @@ from functools import cached_property
 from typing import Any, Literal
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, viewsets
@@ -13,7 +14,7 @@ from posthog.api.shared import UserBasicSerializer
 
 from products.experiments.backend.models.experiment import Experiment
 from products.experiments.backend.models.experiment_variant_annotation import ExperimentVariantAnnotation
-from products.experiments.backend.variant_annotations import validate_annotation_variant_key
+from products.experiments.backend.variant_annotations import notify_annotation_mentions, validate_annotation_variant_key
 
 MAX_ANNOTATION_LENGTH = 5000
 
@@ -25,7 +26,7 @@ class ExperimentVariantAnnotationSerializer(serializers.ModelSerializer):
     )
     content = serializers.CharField(
         max_length=MAX_ANNOTATION_LENGTH,
-        help_text="The note text, e.g. 'Shipped this variant after reviewing the results'.",
+        help_text="Markdown note, up to 5000 characters including formatting and @member:<user_id> mentions.",
     )
     created_by = UserBasicSerializer(read_only=True, allow_null=True, help_text="User who wrote the note.")
 
@@ -87,7 +88,22 @@ class ExperimentVariantAnnotationViewSet(TeamAndOrgViewSetMixin, viewsets.ModelV
         return {**super().get_serializer_context(), "experiment": self.experiment}
 
     def perform_create(self, serializer: serializers.BaseSerializer) -> None:
-        serializer.save(experiment=self.experiment, team_id=self.experiment.team_id, created_by=self.request.user)
+        with transaction.atomic():
+            annotation = serializer.save(
+                experiment=self.experiment, team_id=self.experiment.team_id, created_by=self.request.user
+            )
+            notify_annotation_mentions(annotation)
+
+    def perform_update(self, serializer: serializers.BaseSerializer) -> None:
+        assert isinstance(serializer.instance, ExperimentVariantAnnotation)
+        with transaction.atomic():
+            previous = (
+                ExperimentVariantAnnotation.objects.for_team(self.experiment.team_id)
+                .select_for_update()
+                .get(pk=serializer.instance.pk)
+            )
+            annotation = serializer.save()
+            notify_annotation_mentions(annotation, previous.content)
 
     def safely_get_object(self, queryset: Any) -> ExperimentVariantAnnotation | None:
         try:

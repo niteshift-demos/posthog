@@ -33865,7 +33865,7 @@ export namespace Schemas {
          */
       variant_key: string;
       /**
-         * The note text, e.g. 'Shipped this variant after reviewing the results'.
+         * Markdown note, up to 5000 characters including formatting and @member:<user_id> mentions.
          * @maxLength 5000
          */
       content: string;
@@ -59155,7 +59155,7 @@ export namespace Schemas {
          */
       variant_key?: string;
       /**
-         * The note text, e.g. 'Shipped this variant after reviewing the results'.
+         * Markdown note, up to 5000 characters including formatting and @member:<user_id> mentions.
          * @maxLength 5000
          */
       content?: string;
