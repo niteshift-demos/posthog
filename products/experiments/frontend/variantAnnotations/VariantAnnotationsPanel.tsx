@@ -21,6 +21,8 @@ export function VariantAnnotationsPanel({
 
     return (
         <div
+            id="experiment-variant-annotations"
+            tabIndex={-1}
             className="border border-primary rounded bg-[var(--color-bg-table)] px-3 py-2.5 flex flex-col gap-2"
             data-attr="experiment-variant-annotations"
         >
