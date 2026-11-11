@@ -23,6 +23,8 @@ import { urls } from 'scenes/urls'
 import { groupsModel } from '~/models/groupsModel'
 import { ExperimentConclusion } from '~/types'
 
+import { MAX_ANNOTATION_LENGTH } from 'products/experiments/frontend/variantAnnotations/experimentVariantAnnotationsLogic'
+
 import { CONCLUSION_DISPLAY_CONFIG } from '../constants'
 import { hasFrozenExposureStamps } from '../experimentActions'
 import { experimentLogic } from '../experimentLogic'
@@ -214,8 +216,8 @@ export function ResumeExperimentModal(): JSX.Element {
 export function FinishExperimentModal(): JSX.Element {
     const { experiment, isSingleVariantShipped, shippedVariantKey, endExperimentLoading } = useValues(experimentLogic)
     const { finishExperiment, endExperimentWithoutShipping, restoreUnmodifiedExperiment } = useActions(experimentLogic)
-    const { closeFinishExperimentModal } = useActions(modalsLogic)
-    const { isFinishExperimentModalOpen } = useValues(modalsLogic)
+    const { closeFinishExperimentModal, setShipVariantNote } = useActions(modalsLogic)
+    const { isFinishExperimentModalOpen, shipVariantNote } = useValues(modalsLogic)
     const { aggregationLabel } = useValues(groupsModel)
     const { featureFlags } = useValues(featureFlagLogic)
 
@@ -272,6 +274,7 @@ export function FinishExperimentModal(): JSX.Element {
         } else {
             finishExperiment({
                 selectedVariantKey,
+                note: shipVariantNote,
                 releaseToEveryone,
                 openCleanupPr: withCleanupPr,
                 repository,
@@ -436,6 +439,22 @@ export function FinishExperimentModal(): JSX.Element {
                                 </div>
                             )}
                         </>
+                    )}
+                    {selectedVariantKey && !isSingleVariantShipped && (
+                        <div className="space-y-1">
+                            <LemonLabel htmlFor="ship-variant-note" showOptional>
+                                Variant note
+                            </LemonLabel>
+                            <LemonTextArea
+                                id="ship-variant-note"
+                                value={shipVariantNote}
+                                onChange={setShipVariantNote}
+                                placeholder="Why are you shipping this variant?"
+                                maxLength={MAX_ANNOTATION_LENGTH}
+                                minRows={2}
+                                disabled={endExperimentLoading}
+                            />
+                        </div>
                     )}
                     <ConclusionForm />
                     {cleanupPrAvailable && (

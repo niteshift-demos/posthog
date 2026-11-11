@@ -86,6 +86,8 @@ import {
     PropertyMathType,
 } from '~/types'
 
+import { experimentVariantAnnotationsLogic } from 'products/experiments/frontend/variantAnnotations/experimentVariantAnnotationsLogic'
+
 import type { ProductIntentProperties } from '../../lib/utils/product-intents'
 import type { Noun } from '../../models/groupsModel'
 import type { ExperimentMetricUnion } from '../../queries/schema/schema-general'
@@ -885,17 +887,20 @@ export interface experimentLogicActions {
     }
     finishExperiment: ({
         selectedVariantKey,
+        note,
         releaseToEveryone,
         openCleanupPr,
         repository,
         setRepositoryAsTeamDefault,
     }: {
+        note?: string
         openCleanupPr?: boolean
         releaseToEveryone: boolean
         repository?: string | null
         selectedVariantKey: string
         setRepositoryAsTeamDefault?: boolean
     }) => {
+        note: string
         openCleanupPr: boolean
         releaseToEveryone: boolean
         repository: string | null
@@ -1558,18 +1563,21 @@ export const experimentLogic = kea<experimentLogicType>([
         }),
         finishExperiment: ({
             selectedVariantKey,
+            note,
             releaseToEveryone,
             openCleanupPr,
             repository,
             setRepositoryAsTeamDefault,
         }: {
             selectedVariantKey: string
+            note?: string
             releaseToEveryone: boolean
             openCleanupPr?: boolean
             repository?: string | null
             setRepositoryAsTeamDefault?: boolean
         }) => ({
             selectedVariantKey,
+            note: note ?? '',
             releaseToEveryone,
             openCleanupPr: openCleanupPr ?? false,
             repository: repository ?? null,
@@ -2824,6 +2832,7 @@ export const experimentLogic = kea<experimentLogicType>([
         },
         finishExperiment: async ({
             selectedVariantKey,
+            note,
             releaseToEveryone,
             openCleanupPr,
             repository,
@@ -2851,6 +2860,22 @@ export const experimentLogic = kea<experimentLogicType>([
                         ? 'Experiment ended. The selected variant has been rolled out to all users.'
                         : 'Experiment ended. The selected variant has been rolled out to the experiment population.'
                 )
+
+                if (note.trim()) {
+                    const annotationsLogic = experimentVariantAnnotationsLogic({
+                        experimentId: Number(values.experimentId),
+                    })
+                    const unmount = annotationsLogic.mount()
+                    try {
+                        await annotationsLogic.asyncActions.createAnnotation({
+                            variantKey: selectedVariantKey,
+                            content: note,
+                            fromShip: true,
+                        })
+                    } finally {
+                        unmount()
+                    }
+                }
 
                 // Trigger Hogfetti celebration with cascading delays
                 if (values.experiment.conclusion === ExperimentConclusion.Won) {
