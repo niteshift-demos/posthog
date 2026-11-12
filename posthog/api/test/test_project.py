@@ -1,6 +1,8 @@
 from unittest.mock import MagicMock, patch
 
 from django.core.cache import cache
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
 from parameterized import parameterized
 from rest_framework import status
@@ -891,3 +893,18 @@ class TestProjectAPI(team_api_test_factory()):  # type: ignore
         response = self.client.get(f"/api/projects/{self.project.id}/experiments_config/")
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
         self.assertIn("default_experiment_stats_method", response.json())
+
+    @parameterized.expand([("projects",), ("environments",)])
+    def test_current_project_resolves_visibility_and_team_once(self, prefix):
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(f"/api/{prefix}/@current/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+        self.assertEqual(response.json()["id"], self.project.id)
+
+        sqls = [q["sql"] for q in ctx.captured_queries]
+        visible_teams_queries = [
+            s for s in sqls if 'FROM "posthog_team" WHERE "posthog_team"."organization_id" IN' in s
+        ]
+        passthrough_team_queries = [s for s in sqls if 'WHERE ("posthog_team"."project_id" =' in s]
+        assert len(visible_teams_queries) == 1, visible_teams_queries
+        assert passthrough_team_queries == []

@@ -509,11 +509,16 @@ class UserSerializer(serializers.ModelSerializer):
         # "First user" == "didn't arrive via an invite". Direct signal (membership.invited_by IS NULL)
         # avoids the earliest-joined heuristic, which silently reassigns creator status if the
         # original creator leaves the org.
-        membership = (
-            OrganizationMembership.objects.filter(organization=organization, user=instance)
-            .only("invited_by_id")
-            .first()
-        )
+        user_permissions = self.context.get("user_permissions")
+        if isinstance(user_permissions, UserPermissions) and user_permissions.user.pk == instance.pk:
+            # Already loaded for the nested organization's membership_level
+            membership = user_permissions.organization_memberships.get(organization.id)
+        else:
+            membership = (
+                OrganizationMembership.objects.filter(organization=organization, user=instance)
+                .only("invited_by_id")
+                .first()
+            )
         if membership is None:
             return None
         return membership.invited_by_id is None
@@ -841,6 +846,17 @@ class UserSerializer(serializers.ModelSerializer):
 
         return instance
 
+    def _reload_user_permissions_loaded_before_serialization(self, instance: User) -> None:
+        # Several fields read memberships from the shared UserPermissions. Memberships it loaded before
+        # serialization started may predate a write in this request, so load them again instead.
+        user_permissions = self.context.get("user_permissions")
+        if (
+            isinstance(user_permissions, UserPermissions)
+            and user_permissions.user.pk == instance.pk
+            and user_permissions.has_loaded_organization_memberships
+        ):
+            self.context["user_permissions"] = user_permissions.reloaded()
+
     def to_representation(self, instance: Any) -> Any:
         # Refresh PostHog person properties so the dogfood instance keeps the user's
         # org/project/role properties current. posthoganalytics.capture is non-blocking
@@ -856,6 +872,8 @@ class UserSerializer(serializers.ModelSerializer):
                 event="update user properties",
                 properties={"$set": instance.get_analytics_metadata()},
             )
+
+        self._reload_user_permissions_loaded_before_serialization(instance)
 
         with tracer.start_as_current_span("user_serializer.default_fields"):
             data = super().to_representation(instance)

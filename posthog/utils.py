@@ -1441,7 +1441,8 @@ def is_postgres_alive() -> bool:
     from posthog.models import User
 
     try:
-        User.objects.count()
+        # exists() rather than count(): this runs on every preflight and page load, and only needs a round trip
+        User.objects.exists()
         return True
     except DatabaseError:
         return False

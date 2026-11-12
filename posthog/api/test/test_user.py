@@ -11,9 +11,11 @@ from unittest import mock
 from unittest.mock import ANY, patch
 
 from django.contrib.auth.tokens import default_token_generator
+from django.contrib.sessions.middleware import SessionMiddleware
 from django.core import mail
 from django.core.cache import cache
 from django.db import connection
+from django.http import HttpResponse
 from django.test import SimpleTestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
@@ -23,6 +25,7 @@ from django_otp.plugins.otp_static.models import StaticDevice
 from django_otp.plugins.otp_totp.models import TOTPDevice
 from parameterized import parameterized
 from rest_framework import status
+from rest_framework.test import APIRequestFactory
 from social_django.models import UserSocialAuth
 
 from posthog.api.email_verification import email_verification_token_generator
@@ -39,6 +42,7 @@ from posthog.models.user import default_ui_configuration_for_new_users
 from posthog.models.utils import generate_random_token_personal, hash_key_value
 from posthog.models.webauthn_credential import WebauthnCredential
 from posthog.temporal.tests.delete_teams.inline import execute_deletion_workflows_inline
+from posthog.user_permissions import UserPermissions
 
 from products.dashboards.backend.models.dashboard import Dashboard
 
@@ -182,6 +186,51 @@ class TestUserAPI(APIBaseTest):
         levels_by_org = {org["id"]: org["membership_level"] for org in many_body["organizations"]}
         assert levels_by_org[str(owner_org.id)] == OrganizationMembership.Level.OWNER
         assert levels_by_org[str(member_orgs[0].id)] == OrganizationMembership.Level.MEMBER
+
+    def test_me_and_current_project_reflect_each_users_membership_before_and_after_a_role_change(self):
+        self.organization_membership.level = OrganizationMembership.Level.ADMIN
+        self.organization_membership.save()
+        invited = create_user("invited@example.com", self.CONFIG_PASSWORD, self.organization)
+        OrganizationMembership.objects.filter(organization=self.organization, user=invited).update(invited_by=self.user)
+
+        def boot_state(user: User) -> tuple[int, int, bool, int]:
+            self.client.force_login(user)
+            me = self.client.get("/api/users/@me/").json()
+            project = self.client.get("/api/projects/@current/").json()
+            org_level = next(o["membership_level"] for o in me["organizations"] if o["id"] == str(self.organization.id))
+            return (
+                me["organization"]["membership_level"],
+                org_level,
+                me["is_organization_first_user"],
+                project["effective_membership_level"],
+            )
+
+        admin, member = OrganizationMembership.Level.ADMIN, OrganizationMembership.Level.MEMBER
+        assert boot_state(self.user) == (admin, admin, True, admin)
+        assert boot_state(invited) == (member, member, False, member)
+
+        self.organization_membership.level = member
+        self.organization_membership.save()
+
+        assert boot_state(self.user) == (member, member, True, member)
+        assert boot_state(invited) == (member, member, False, member)
+
+    def test_user_serializer_reports_a_role_change_made_earlier_in_the_same_request(self):
+        request = APIRequestFactory().get("/api/users/@me/")
+        SessionMiddleware(lambda _request: HttpResponse()).process_request(request)
+        request.user = self.user
+        user_permissions = UserPermissions(self.user)
+        assert (
+            user_permissions.organization_memberships[self.organization.id].level == self.organization_membership.level
+        )
+
+        self.organization_membership.level = OrganizationMembership.Level.OWNER
+        self.organization_membership.save()
+
+        data = UserSerializer(self.user, context={"request": request, "user_permissions": user_permissions}).data
+        org_level = next(o["membership_level"] for o in data["organizations"] if o["id"] == str(self.organization.id))
+        assert data["organization"]["membership_level"] == OrganizationMembership.Level.OWNER
+        assert org_level == OrganizationMembership.Level.OWNER
 
     def test_current_user_includes_pending_invites(self):
         from posthog.models import OrganizationInvite

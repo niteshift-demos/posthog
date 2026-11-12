@@ -76,6 +76,25 @@ describe('maxLogic', () => {
         expect(actionsRequestCount).toBe(0)
     })
 
+    it('loads conversation history once when Max mounts alongside maxGlobalLogic', async () => {
+        let conversationListRequestCount = 0
+        useMocks({
+            get: {
+                '/api/environments/:team_id/conversations/': () => {
+                    conversationListRequestCount++
+                    return [200, { results: [] }]
+                },
+            },
+        })
+
+        logic = maxLogic({ panelId: 'test' })
+        logic.mount()
+
+        await expectLogic(logic).toDispatchActions(['loadConversationHistorySuccess'])
+
+        expect(conversationListRequestCount).toBe(1)
+    })
+
     it('sets the question when URL has hash param #panel=max:Foo', async () => {
         // Set up sidePanelStateLogic with the options before mounting maxLogic
         sidePanelStateLogic.mount()

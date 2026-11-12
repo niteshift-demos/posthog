@@ -289,11 +289,14 @@ class OrganizationBasicSerializer(serializers.ModelSerializer):
 
     @cached_property
     def _membership_levels_by_org(self) -> dict[UUID, int]:
-        return dict(
-            OrganizationMembership.objects.filter(user=self.context["request"].user).values_list(
-                "organization_id", "level"
-            )
-        )
+        request_user = self.context["request"].user
+        user_permissions = self.context.get("user_permissions")
+        if user_permissions is not None and user_permissions.user.pk == request_user.pk:
+            # Reuse the memberships a parent serializer has usually loaded already
+            return {
+                org_id: membership.level for org_id, membership in user_permissions.organization_memberships.items()
+            }
+        return dict(OrganizationMembership.objects.filter(user=request_user).values_list("organization_id", "level"))
 
     @tracer.start_as_current_span("organization_basic_serializer.to_representation")
     def to_representation(self, instance):
