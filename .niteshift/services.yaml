@@ -153,3 +153,11 @@ services:
               }
           }
           CADDY
+
+    - name: metro
+      command: |
+          export PATH="/opt/node/bin:$PATH"
+          exec pnpm exec expo start --dev-client --host localhost --port "$PORT"
+      cwd: products/desktop/apps/mobile
+      port: 8081
+      autostart: false

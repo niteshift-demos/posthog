@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/../../products/desktop"
+export PATH="/opt/node/bin:$PATH"
+
+pnpm --dir apps/mobile exec expo prebuild --platform ios --no-install
+cp apps/mobile/ios/PostHog.xcodeproj/xcshareddata/xcschemes/PostHog.xcscheme \
+    apps/mobile/ios/PostHog.xcodeproj/xcshareddata/xcschemes/PostHogPreview.xcscheme
+
+# Syncing the generated project preserves the unique app scheme on fresh builders.
+exec lim xcode build . --configuration Debug --expo-app-dir apps/mobile \
+    --include '^apps/mobile/ios/' --scheme PostHogPreview --artifact-name PostHog.app \
+    --env npm_config_ignore_scripts=true
