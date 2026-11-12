@@ -2556,6 +2556,8 @@ export const dashboardLogic = kea<dashboardLogicType>([
                 )
                 return effectiveEditBarFilters
             },
+            // `dashboard` changes on every tile refresh; a stable result stops every tile re-rendering each time.
+            { resultEqualityCheck: objectsEqual },
         ],
         effectiveRefreshFilters: [
             (s) => [s.dashboard, s.externalFilters, s.urlFilters],
@@ -2566,6 +2568,7 @@ export const dashboardLogic = kea<dashboardLogicType>([
             ): DashboardFilter => {
                 return combineDashboardFilters(dashboard?.persisted_filters || {}, externalFilters, urlFilters)
             },
+            { resultEqualityCheck: objectsEqual },
         ],
         effectiveDashboardVariableOverrides: [
             (s) => [s.dashboard, s.urlVariables],
@@ -2573,6 +2576,7 @@ export const dashboardLogic = kea<dashboardLogicType>([
                 ...dashboard?.persisted_variables,
                 ...urlVariables,
             }),
+            { resultEqualityCheck: objectsEqual },
         ],
         hasUnsavedLayoutChanges: [
             (s) => [s.dashboard, s.dashboardLayouts],
@@ -3083,6 +3087,7 @@ export const dashboardLogic = kea<dashboardLogicType>([
                 const paletteSize = dataColorTheme ? Object.keys(dataColorTheme).length : undefined
                 return applyAutoBreakdownColors(tileBreakdownValues, kept, paletteSize)
             },
+            { resultEqualityCheck: objectsEqual },
         ],
         hasUnsavedColorChanges: [
             (s) => [s.temporaryBreakdownColors, s.temporaryDataColorThemeId, s.dashboard],
