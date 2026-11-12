@@ -8,7 +8,7 @@ from typing import Any, Union, cast
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
-from django.db.models import Count, F, Max, OuterRef, QuerySet, Subquery
+from django.db.models import Count, F, Max, OuterRef, QuerySet, Subquery, prefetch_related_objects
 from django.db.models.query_utils import Q
 from django.http import HttpResponse
 from django.utils.text import slugify
@@ -1797,6 +1797,8 @@ class InsightViewSet(
 
     def paginate_queryset(self, queryset):
         page = super().paginate_queryset(queryset)
+        if page is not None and self._skips_team_join():
+            self._attach_teams(page)
         if (
             page is not None
             and getattr(self, "action", None) == "list"
@@ -1806,6 +1808,22 @@ class InsightViewSet(
             tiles = [tile for insight in page for tile in insight.dashboard_tiles.all()]
             self.user_permissions.set_preloaded_dashboard_tiles(tiles)
         return page
+
+    def _skips_team_join(self) -> bool:
+        return self.action in ("list", "retrieve")
+
+    def _attach_teams(self, insights: Sequence[Insight]) -> None:
+        # Joining posthog_team would copy that wide row onto every insight. Nearly all of them
+        # belong to the request's team, so reuse that instance and batch-load the rest.
+        insights_on_other_teams = []
+        for insight in insights:
+            if insight.team_id == self.team.id:
+                insight.team = self.team
+            else:
+                insights_on_other_teams.append(insight)
+        # The basic serializer never reads the team, so loading it there would be a wasted query.
+        if insights_on_other_teams and not self._is_basic_request():
+            prefetch_related_objects(insights_on_other_teams, "team")
 
     def get_serializer_class(self) -> type[serializers.BaseSerializer]:
         if self._is_basic_request():
@@ -1872,12 +1890,14 @@ class InsightViewSet(
             queryset = self._filter_queryset_by_access_level(queryset)
 
         if is_basic:
-            queryset = queryset.select_related("created_by", "team")
+            queryset = queryset.select_related("created_by")
         else:
-            queryset = queryset.select_related("created_by", "last_modified_by", "team")
+            queryset = queryset.select_related("created_by", "last_modified_by")
+        if not self._skips_team_join():
+            queryset = queryset.select_related("team")
 
+        # Tags are prefetched by TaggedItemViewSetMixin.filter_queryset.
         if self.action == "list":
-            queryset = queryset.prefetch_related("tagged_items__tag")
             last_viewed_at = (
                 InsightViewed.objects.filter(insight=OuterRef("pk"))
                 .order_by("-last_viewed_at")
@@ -1896,8 +1916,13 @@ class InsightViewSet(
             # and fall back to short_id so those legacy insights stay retrievable.
             pk_match = queryset.filter(pk=int(lookup_value)).first()
             if pk_match is not None:
-                return pk_match
-        return queryset.filter(short_id=lookup_value).first()
+                return self._with_team(pk_match)
+        return self._with_team(queryset.filter(short_id=lookup_value).first())
+
+    def _with_team(self, insight: Insight | None) -> Insight | None:
+        if insight is not None and self._skips_team_join():
+            self._attach_teams([insight])
+        return insight
 
     def filter_queryset(self, queryset: QuerySet) -> QuerySet:
         return drop_similar_when_exact_exists(super().filter_queryset(queryset))

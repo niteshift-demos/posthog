@@ -348,6 +348,16 @@ class UserInsightPermissions:
         if self.p.preloaded_insight_dashboards is not None:
             return self.p.preloaded_insight_dashboards
 
+        prefetched_tiles = getattr(self.insight, "_prefetched_objects_cache", {}).get("dashboard_tiles")
+        if prefetched_tiles is not None and all(DashboardTile.dashboard.is_cached(tile) for tile in prefetched_tiles):
+            # The tile prefetch already joined each tile's dashboard, so skip re-querying both tables.
+            dashboards_by_id = {
+                tile.dashboard_id: tile.dashboard
+                for tile in prefetched_tiles
+                if not tile.deleted and not tile.dashboard.deleted
+            }
+            return list(dashboards_by_id.values())
+
         dashboard_ids = set(
             DashboardTile.objects.filter(insight=self.insight.pk).values_list("dashboard_id", flat=True)
         )

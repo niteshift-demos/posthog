@@ -1071,10 +1071,42 @@ class TestInsight(ClickhouseTestMixin, APIBaseTest, QueryMatchingTest):
 
         # adding more insights doesn't change the query count
         self.assertEqual(
-            [12, 12, 12, 12, 12],
+            [11, 11, 11, 11, 11],
             query_counts,
             f"received query counts\n\n{query_counts}",
         )
+
+    @parameterized.expand([("list", "/"), ("retrieve", "/{insight_id}/")])
+    def test_insight_from_sibling_environment_uses_its_own_team(self, _name: str, path: str) -> None:
+        sibling_team = Team.objects.create(organization=self.organization, project=self.project, timezone="Asia/Tokyo")
+        insight = Insight.objects.create(
+            team=sibling_team,
+            query={"kind": "InsightVizNode", "source": {"kind": "TrendsQuery", "series": [{"kind": "EventsNode"}]}},
+        )
+
+        response = self.client.get(
+            f"/api/environments/{self.team.id}/insights{path.format(insight_id=insight.id)}?refresh=force_cache"
+        ).json()
+
+        served = response if "results" not in response else response["results"][0]
+        assert served["id"] == insight.id
+        assert served["timezone"] == "Asia/Tokyo"
+
+    @override_settings(PERSON_ON_EVENTS_OVERRIDE=False, PERSON_ON_EVENTS_V2_OVERRIDE=False)
+    def test_retrieve_reuses_prefetched_tiles_for_permission_dashboards(self) -> None:
+        dashboards = [Dashboard.objects.create(name=f"dashboard {n}", team=self.team) for n in range(3)]
+        insight_id, _ = self.dashboard_api.create_insight(
+            data={"dashboards": [d.pk for d in dashboards], "filters": {"events": [{"id": "$pageview"}]}}
+        )
+
+        with capture_db_queries() as ctx:
+            response = self.client.get(f"/api/environments/{self.team.id}/insights/{insight_id}/")
+            assert response.status_code == status.HTTP_200_OK
+        sqls = [q["sql"] for q in ctx.captured_queries]
+
+        assert response.json()["effective_privilege_level"] == Dashboard.PrivilegeLevel.CAN_EDIT
+        assert len([sql for sql in sqls if 'FROM "posthog_dashboardtile"' in sql]) == 1
+        assert not [sql for sql in sqls if 'FROM "posthog_dashboard" ' in sql]
 
     @parameterized.expand([("basic_path", "&basic=true"), ("full_path", "")])
     @override_settings(PERSON_ON_EVENTS_OVERRIDE=False, PERSON_ON_EVENTS_V2_OVERRIDE=False)
