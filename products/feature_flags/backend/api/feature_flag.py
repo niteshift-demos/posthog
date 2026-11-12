@@ -1166,6 +1166,11 @@ class FeatureFlagExperimentSetMetadataSerializer(serializers.Serializer):
     )
 
 
+# Serializer context flag set by the flag list endpoint, which shows names only for live cohorts
+# of each flag's own team. Other callers resolve names across the project, deleted ones included.
+COHORT_NAMES_FROM_OWN_TEAM_ONLY = "cohort_names_from_own_team_only"
+
+
 class FeatureFlagSerializer(
     TaggedItemSerializerMixin,
     EvaluationContextSerializerMixin,
@@ -2401,7 +2406,9 @@ class FeatureFlagSerializer(
     def _get_cohort_names(self, instance: FeatureFlag, filters: dict) -> dict[str, str]:
         """Names of the cohorts `filters` references, keyed by stringified cohort id."""
         if isinstance(self.instance, list | QuerySet):
-            return self._page_cohort_names.get(instance.team_id, {})
+            if self.context.get(COHORT_NAMES_FROM_OWN_TEAM_ONLY):
+                return self._page_cohort_names_by_team.get(instance.team_id, {})
+            return self._page_cohort_names_in_project
 
         cohort_ids = {cohort_prop.get("value") for cohort_prop in self._get_cohort_properties_from_filters(filters)}
         if not cohort_ids:
@@ -2412,28 +2419,40 @@ class FeatureFlagSerializer(
         }
 
     @functools.cached_property
-    def _page_cohort_names(self) -> dict[int, dict[str, str]]:
-        """Cohort names for every flag being serialized as a list, loaded in one query.
-
-        Keyed by team id, since a flag only resolves cohorts of its own team.
-        """
-        flags = cast(Iterable[FeatureFlag], self.instance)
-        team_ids: set[int] = set()
+    def _page_cohort_ids(self) -> set[int]:
+        """Ids of every cohort referenced by the flags being serialized as a list."""
         cohort_ids: set[int] = set()
-        for flag in flags:
+        for flag in cast(Iterable[FeatureFlag], self.instance):
             for cohort_prop in self._get_cohort_properties_from_filters(flag.get_filters() or {}):
                 value = str(cohort_prop.get("value"))
                 if value.isdigit():
-                    team_ids.add(flag.team_id)
                     cohort_ids.add(int(value))
+        return cohort_ids
+
+    @functools.cached_property
+    def _page_cohort_names_by_team(self) -> dict[int, dict[str, str]]:
+        """Live cohort names for a list of flags, keyed by team so a flag only sees its own team's cohorts."""
         names: dict[int, dict[str, str]] = {}
-        if not cohort_ids:
+        if not self._page_cohort_ids:
             return names
+        team_ids = {flag.team_id for flag in cast(Iterable[FeatureFlag], self.instance)}
         for team_id, cohort_id, name in Cohort.objects.filter(
-            id__in=cohort_ids, team_id__in=team_ids, deleted=False
+            id__in=self._page_cohort_ids, team_id__in=team_ids, deleted=False
         ).values_list("team_id", "id", "name"):
             names.setdefault(team_id, {})[str(cohort_id)] = name
         return names
+
+    @functools.cached_property
+    def _page_cohort_names_in_project(self) -> dict[str, str]:
+        """Names for a list of flags, scoped like the single-flag lookup: whole project, deleted cohorts included."""
+        if not self._page_cohort_ids:
+            return {}
+        return {
+            str(cohort_id): name
+            for cohort_id, name in Cohort.objects.filter(
+                id__in=self._page_cohort_ids, team__project_id=self.context["project_id"]
+            ).values_list("id", "name")
+        }
 
     def get_experiment_set(self, obj: FeatureFlag) -> list[int]:
         # Use the prefetched active experiments
@@ -3053,6 +3072,12 @@ class FeatureFlagViewSet(
     @extend_schema(request=FeatureFlagCreateRequestSchemaSerializer)
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
+
+    def get_serializer_context(self) -> dict[str, Any]:
+        context = super().get_serializer_context()
+        if self.action == "list":
+            context[COHORT_NAMES_FROM_OWN_TEAM_ONLY] = True
+        return context
 
     @extend_schema(request=FeatureFlagPartialUpdateRequestSchemaSerializer)
     def partial_update(self, request, *args, **kwargs):

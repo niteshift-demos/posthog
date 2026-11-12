@@ -4573,6 +4573,29 @@ class TestFeatureFlag(APIBaseTest, ClickhouseTestMixin):
             properties = flag["filters"]["groups"][0]["properties"]
             assert [p["cohort_name"] for p in properties] == ["referenced", None]
 
+    def test_list_serializes_each_flags_own_surveys_and_early_access_features(self) -> None:
+        for name in ("alpha", "beta"):
+            flag = FeatureFlag.objects.create(team=self.team, created_by=self.user, key=f"{name}_flag")
+            Survey.objects.create(
+                team=self.team,
+                created_by=self.user,
+                name=f"{name} survey",
+                type="popover",
+                linked_flag=flag,
+                questions=[{"type": "open", "question": f"{name}?"}],
+            )
+            EarlyAccessFeature.objects.create(team=self.team, name=f"{name} feature", feature_flag=flag, stage="beta")
+
+        response = self.client.get(f"/api/projects/{self.team.id}/feature_flags/")
+
+        assert response.status_code == status.HTTP_200_OK
+        by_key = {flag["key"]: flag for flag in response.json()["results"]}
+        for name in ("alpha", "beta"):
+            flag = by_key[f"{name}_flag"]
+            assert [s["name"] for s in flag["surveys"]] == [f"{name} survey"]
+            assert [q["question"] for q in flag["surveys"][0]["questions"]] == [f"{name}?"]
+            assert [(f["name"], f["flagKey"]) for f in flag["features"]] == [(f"{name} feature", f"{name}_flag")]
+
     def test_retrieve_query_count_does_not_scale_with_linked_surveys(self) -> None:
         flag = FeatureFlag.objects.create(team=self.team, created_by=self.user, key="surveyed")
         action = Action.objects.create(team=self.team, name="pageview")
