@@ -1280,16 +1280,26 @@ class FeatureFlagSerializer(
             )
         )
 
-    def get_features(self, feature_flag: FeatureFlag) -> dict:
+    # Building a serializer resolves its fields, which is costly enough to dominate list
+    # serialization when repeated per row, so the nested list serializers are built once.
+    @functools.cached_property
+    def _features_list_serializer(self) -> serializers.BaseSerializer:
         from products.early_access_features.backend.api import MinimalEarlyAccessFeatureSerializer
 
-        return MinimalEarlyAccessFeatureSerializer(feature_flag.features, many=True).data
+        return MinimalEarlyAccessFeatureSerializer(many=True)
 
-    def get_surveys(self, feature_flag: FeatureFlag) -> dict:
+    @functools.cached_property
+    def _surveys_list_serializer(self) -> serializers.BaseSerializer:
         from products.surveys.backend.api.survey import SurveyAPISerializer
 
-        return SurveyAPISerializer(feature_flag.surveys_linked_flag, many=True).data
-        # ignoring type because mypy doesn't know about the surveys_linked_flag `related_name` relationship
+        return SurveyAPISerializer(many=True)
+
+    # The `-> dict` hints are wrong but drive the published OpenAPI schema, so they stay.
+    def get_features(self, feature_flag: FeatureFlag) -> dict:
+        return cast(dict, self._features_list_serializer.to_representation(feature_flag.features))
+
+    def get_surveys(self, feature_flag: FeatureFlag) -> dict:
+        return cast(dict, self._surveys_list_serializer.to_representation(feature_flag.surveys_linked_flag))
 
     def get_is_used_in_replay_settings(self, feature_flag: FeatureFlag) -> bool:
         """Check if this feature flag is used in any team's session recording linked flag setting."""
@@ -2345,24 +2355,7 @@ class FeatureFlagSerializer(
         representation = super().to_representation(instance)
         filters = representation.get("filters", {})
 
-        # Get all cohort IDs used in the feature flag
-        cohort_ids = set()
-        for cohort_prop in self._get_cohort_properties_from_filters(filters):
-            cohort_ids.add(cohort_prop.get("value"))
-
-        # Use prefetched cohorts if available
-        if hasattr(instance.team, "available_cohorts"):
-            cohorts = {
-                str(cohort.id): cohort.name
-                for cohort in instance.team.available_cohorts
-                if str(cohort.id) in map(str, cohort_ids)
-            }
-        else:
-            # Fallback to database query if cohorts weren't prefetched
-            cohorts = {
-                str(cohort.id): cohort.name
-                for cohort in Cohort.objects.filter(id__in=cohort_ids, team__project_id=self.context["project_id"])
-            }
+        cohorts = self._get_cohort_names(instance, filters)
 
         # Add cohort names to the response
         for cohort_prop in self._get_cohort_properties_from_filters(filters):
@@ -2404,6 +2397,43 @@ class FeatureFlagSerializer(
 
         representation["filters"] = filters
         return representation
+
+    def _get_cohort_names(self, instance: FeatureFlag, filters: dict) -> dict[str, str]:
+        """Names of the cohorts `filters` references, keyed by stringified cohort id."""
+        if isinstance(self.instance, list | QuerySet):
+            return self._page_cohort_names.get(instance.team_id, {})
+
+        cohort_ids = {cohort_prop.get("value") for cohort_prop in self._get_cohort_properties_from_filters(filters)}
+        if not cohort_ids:
+            return {}
+        return {
+            str(cohort.id): cohort.name
+            for cohort in Cohort.objects.filter(id__in=cohort_ids, team__project_id=self.context["project_id"])
+        }
+
+    @functools.cached_property
+    def _page_cohort_names(self) -> dict[int, dict[str, str]]:
+        """Cohort names for every flag being serialized as a list, loaded in one query.
+
+        Keyed by team id, since a flag only resolves cohorts of its own team.
+        """
+        flags = cast(Iterable[FeatureFlag], self.instance)
+        team_ids: set[int] = set()
+        cohort_ids: set[int] = set()
+        for flag in flags:
+            for cohort_prop in self._get_cohort_properties_from_filters(flag.get_filters() or {}):
+                value = str(cohort_prop.get("value"))
+                if value.isdigit():
+                    team_ids.add(flag.team_id)
+                    cohort_ids.add(int(value))
+        names: dict[int, dict[str, str]] = {}
+        if not cohort_ids:
+            return names
+        for team_id, cohort_id, name in Cohort.objects.filter(
+            id__in=cohort_ids, team_id__in=team_ids, deleted=False
+        ).values_list("team_id", "id", "name"):
+            names.setdefault(team_id, {})[str(cohort_id)] = name
+        return names
 
     def get_experiment_set(self, obj: FeatureFlag) -> list[int]:
         # Use the prefetched active experiments
@@ -3077,28 +3107,22 @@ class FeatureFlagViewSet(
             )
         )
 
-        if self.action == "list":
-            queryset = (
-                queryset.filter(deleted=False)
-                .prefetch_related("analytics_dashboards")
-                .prefetch_related(
-                    Prefetch(
-                        "surveys_linked_flag",
-                        queryset=Survey.objects.select_related(
-                            "linked_flag",
-                            "targeting_flag",
-                            "internal_targeting_flag",
-                        ).prefetch_related("actions"),
-                    )
-                )
-                .prefetch_related(
-                    Prefetch(
-                        "team__cohort_set",
-                        queryset=Cohort.objects.filter(deleted=False).only("id", "name"),
-                        to_attr="available_cohorts",
-                    )
+        # Read-only actions only: write paths serialize the instance after mutating it, and
+        # prefetched survey caches would not reflect those writes.
+        if self.action in ("list", "retrieve"):
+            queryset = queryset.prefetch_related("analytics_dashboards").prefetch_related(
+                Prefetch(
+                    "surveys_linked_flag",
+                    queryset=Survey.objects.select_related(
+                        "linked_flag",
+                        "targeting_flag",
+                        "internal_targeting_flag",
+                    ).prefetch_related("actions"),
                 )
             )
+
+        if self.action == "list":
+            queryset = queryset.filter(deleted=False)
 
             survey_flag_ids = Survey.get_internal_flag_ids(project_id=self.project_id)
             product_tour_internal_targeting_flags = ProductTour.all_objects.filter(

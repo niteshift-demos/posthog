@@ -48,6 +48,7 @@ from posthog.test.persons import (
 )
 from posthog.test.test_utils import create_group_type_mapping_without_created_at
 
+from products.actions.backend.models.action import Action
 from products.cohorts.backend.models.calculation_history import CohortCalculationHistory
 from products.cohorts.backend.models.cohort import Cohort, CohortType
 from products.cohorts.backend.models.util import CohortErrorCode, get_friendly_error_message
@@ -4372,7 +4373,7 @@ class TestFeatureFlag(APIBaseTest, ClickhouseTestMixin):
             format="json",
         ).json()
 
-        with self.assertNumQueries(FuzzyInt(19, 20)):
+        with self.assertNumQueries(FuzzyInt(17, 18)):
             response = self.client.get(f"/api/projects/{self.team.id}/feature_flags")
             self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -4388,7 +4389,7 @@ class TestFeatureFlag(APIBaseTest, ClickhouseTestMixin):
             ).json()
 
         # Query count should stay constant regardless of flag count (no N+1)
-        with self.assertNumQueries(FuzzyInt(19, 20)):
+        with self.assertNumQueries(FuzzyInt(17, 18)):
             response = self.client.get(f"/api/projects/{self.team.id}/feature_flags")
             self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -4412,7 +4413,7 @@ class TestFeatureFlag(APIBaseTest, ClickhouseTestMixin):
             name="Flag role access",
         )
 
-        with self.assertNumQueries(FuzzyInt(19, 20)):
+        with self.assertNumQueries(FuzzyInt(17, 18)):
             response = self.client.get(f"/api/projects/{self.team.id}/feature_flags")
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(len(response.json()["results"]), 2)
@@ -4535,6 +4536,77 @@ class TestFeatureFlag(APIBaseTest, ClickhouseTestMixin):
             self.assertIn("main_flag", result_keys)
             # targeting_flag and internal_targeting_flag should be excluded
             # (they're survey-specific and filtered out from the main list)
+
+    def test_list_query_count_does_not_scale_with_project_cohorts(self) -> None:
+        cohort = Cohort.objects.create(team=self.team, name="referenced")
+        deleted_cohort = Cohort.objects.create(team=self.team, name="gone", deleted=True)
+        for i in range(3):
+            FeatureFlag.objects.create(
+                team=self.team,
+                created_by=self.user,
+                key=f"cohort_flag_{i}",
+                filters={
+                    "groups": [
+                        {
+                            "properties": [
+                                {"key": "id", "type": "cohort", "value": cohort.pk},
+                                {"key": "id", "type": "cohort", "value": deleted_cohort.pk},
+                            ]
+                        }
+                    ]
+                },
+            )
+
+        url = f"/api/projects/{self.team.id}/feature_flags/"
+        self.client.get(url)  # the first request fills caches, so compare warm requests only
+        with capture_db_queries() as baseline:
+            self.client.get(url)
+
+        Cohort.objects.bulk_create([Cohort(team=self.team, name=f"unrelated_{i}") for i in range(10)])
+
+        with capture_db_queries() as with_more_cohorts:
+            response = self.client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(with_more_cohorts.captured_queries) == len(baseline.captured_queries)
+        for flag in response.json()["results"]:
+            properties = flag["filters"]["groups"][0]["properties"]
+            assert [p["cohort_name"] for p in properties] == ["referenced", None]
+
+    def test_retrieve_query_count_does_not_scale_with_linked_surveys(self) -> None:
+        flag = FeatureFlag.objects.create(team=self.team, created_by=self.user, key="surveyed")
+        action = Action.objects.create(team=self.team, name="pageview")
+
+        def link_survey(i: int) -> None:
+            targeting_flag = FeatureFlag.objects.create(team=self.team, created_by=self.user, key=f"targeting_{i}")
+            survey = Survey.objects.create(
+                team=self.team,
+                created_by=self.user,
+                name=f"Survey {i}",
+                type="popover",
+                linked_flag=flag,
+                targeting_flag=targeting_flag,
+                questions=[{"type": "open", "question": "Thoughts?"}],
+            )
+            survey.actions.add(action)
+
+        link_survey(0)
+        url = f"/api/projects/{self.team.id}/feature_flags/{flag.id}/"
+        self.client.get(url)  # the first request fills caches, so compare warm requests only
+        with capture_db_queries() as baseline:
+            self.client.get(url)
+
+        for i in range(1, 4):
+            link_survey(i)
+
+        with capture_db_queries() as with_more_surveys:
+            response = self.client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(with_more_surveys.captured_queries) == len(baseline.captured_queries)
+        surveys = response.json()["surveys"]
+        assert sorted(s["targeting_flag_key"] for s in surveys) == [f"targeting_{i}" for i in range(4)]
+        assert all(s["conditions"]["actions"]["values"][0]["name"] == "pageview" for s in surveys)
 
     @patch("products.feature_flags.backend.api.feature_flag.report_user_action")
     def test_generate_usage_dashboard_creates_insights(self, mock_report_user_action):
