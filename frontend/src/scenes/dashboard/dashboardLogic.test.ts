@@ -332,10 +332,14 @@ describe('dashboardLogic', () => {
             logic.mount()
         })
 
-        it('keeps the layouts reference stable when a tile refresh changes results but not geometry', async () => {
+        it('keeps tile-facing values stable when a tile refresh changes results but not geometry', async () => {
             await expectLogic(logic).toFinishAllListeners()
 
+            // Every tile receives these, so a new reference per refresh would re-render every tile.
             const initialLayouts = logic.values.layouts
+            const initialFilters = logic.values.effectiveEditBarFilters
+            const initialVariables = logic.values.effectiveDashboardVariableOverrides
+            const initialBreakdownColors = logic.values.effectiveBreakdownColors
             const firstTile = logic.values.dashboard!.tiles[0]
 
             await expectLogic(logic, () => {
@@ -348,6 +352,9 @@ describe('dashboardLogic', () => {
 
             expect(logic.values.tiles[0].insight!.result).toEqual([{ count: 42 }])
             expect(logic.values.layouts).toBe(initialLayouts)
+            expect(logic.values.effectiveEditBarFilters).toBe(initialFilters)
+            expect(logic.values.effectiveDashboardVariableOverrides).toBe(initialVariables)
+            expect(logic.values.effectiveBreakdownColors).toBe(initialBreakdownColors)
         })
 
         it('previews tile spacing immediately and persists only the final choice', async () => {

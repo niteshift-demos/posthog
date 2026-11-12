@@ -3,7 +3,7 @@ import './DashboardItems.scss'
 import clsx from 'clsx'
 import { useActions, useAsyncActions, useValues } from 'kea'
 import { router } from 'kea-router'
-import { RefObject, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ComponentProps, RefObject, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Responsive as ReactGridLayout, useContainerWidth } from 'react-grid-layout'
 import type { Layout, LayoutItem } from 'react-grid-layout'
 import { GridBackground } from 'react-grid-layout/extras'
@@ -20,7 +20,7 @@ import { DashboardEventSource, eventUsageLogic } from 'lib/utils/eventUsageLogic
 import { objectsEqual } from 'lib/utils/objects'
 import { addInsightToDashboardLogic } from 'scenes/dashboard/addInsightToDashboardModalLogic'
 import { getAddTileMenuItems } from 'scenes/dashboard/DashboardHeaderActions'
-import { dashboardLogic } from 'scenes/dashboard/dashboardLogic'
+import { dashboardLogic, type dashboardLogicType } from 'scenes/dashboard/dashboardLogic'
 import {
     BREAKPOINTS,
     BREAKPOINT_COLUMN_COUNTS,
@@ -36,7 +36,14 @@ import { urls } from 'scenes/urls'
 
 import { getCurrentExporterData } from '~/exporter/exporterViewLogic'
 import { insightsModel } from '~/models/insightsModel'
-import { DashboardLayoutSize, DashboardMode, DashboardPlacement, DashboardType } from '~/types'
+import {
+    DashboardLayoutSize,
+    DashboardMode,
+    DashboardPlacement,
+    DashboardTile,
+    DashboardType,
+    QueryBasedInsightModel,
+} from '~/types'
 
 import { getDashboardTileSpacingGap } from 'products/dashboards/frontend/dashboardCustomization'
 
@@ -50,6 +57,98 @@ const DRAG_AUTO_SCROLL_SPEED = 50
 const BASE_ROW_HEIGHT = 80
 const BASE_MARGIN: [number, number] = [16, 16]
 const CONTAINER_PADDING: [number, number] = [0, 0]
+
+type DashboardWidgetItemProps = ComponentProps<typeof DashboardWidgetItem>
+
+interface TileHandlers {
+    moveToDashboard: (target: Pick<DashboardType, 'id' | 'name'>) => void
+    copyToDashboard: (target: Pick<DashboardType, 'id' | 'name'>) => void
+    removeFromDashboard: () => void
+    duplicate: () => void
+    toggleShowDescription: () => void
+    updateColor: (color: DashboardTile['color']) => void
+    refresh: () => void
+    rename: () => void
+    setOverride: () => void
+    editTextTile: () => void
+    editButtonTile: () => void
+    refreshWidget: () => void
+    applyWidgetIssueMetadataChange: NonNullable<DashboardWidgetItemProps['onApplyWidgetIssueMetadataChange']>
+    updateWidgetTile: NonNullable<DashboardWidgetItemProps['onUpdateWidgetTile']>
+    tileErrorAsApiError: ApiError | undefined
+}
+
+type DashboardActions = dashboardLogicType['actions']
+
+interface TileHandlerActions extends Pick<
+    DashboardActions,
+    | 'moveToDashboard'
+    | 'copyToDashboard'
+    | 'removeTile'
+    | 'duplicateTile'
+    | 'toggleTileDescription'
+    | 'updateTileColor'
+    | 'refreshDashboardItem'
+    | 'setTileOverride'
+    | 'refreshDashboardWidgets'
+    | 'applyWidgetIssueMetadataChange'
+> {
+    renameInsight: (insight: QueryBasedInsightModel) => void
+    push: (url: string) => void
+    updateWidgetTile: dashboardLogicType['asyncActions']['updateWidgetTile']
+}
+
+function buildTileHandlers(
+    tile: DashboardTile<QueryBasedInsightModel>,
+    dashboardId: number | undefined,
+    actions: TileHandlerActions
+): TileHandlers {
+    const requireDashboardId = (action: string): number => {
+        if (dashboardId == null) {
+            throw new Error(`must be on a dashboard to ${action}`)
+        }
+        return dashboardId
+    }
+    return {
+        moveToDashboard: ({ id, name }) =>
+            actions.moveToDashboard(tile, requireDashboardId('move this tile'), id, name),
+        copyToDashboard: ({ id, name }) =>
+            actions.copyToDashboard(tile, requireDashboardId('copy this tile'), id, name),
+        removeFromDashboard: () => actions.removeTile(tile),
+        duplicate: () => actions.duplicateTile(tile),
+        toggleShowDescription: () => actions.toggleTileDescription(tile.id),
+        updateColor: (color) => actions.updateTileColor(tile.id, color),
+        refresh: () => actions.refreshDashboardItem({ tile }),
+        rename: () => {
+            if (tile.insight) {
+                actions.renameInsight(tile.insight)
+            }
+        },
+        setOverride: () => actions.setTileOverride(tile),
+        editTextTile: () => {
+            if (dashboardId) {
+                actions.push(urls.dashboardTextTile(dashboardId, tile.id))
+            }
+        },
+        editButtonTile: () => {
+            if (dashboardId) {
+                actions.push(urls.dashboardButtonTile(dashboardId, tile.id))
+            }
+        },
+        refreshWidget: () => actions.refreshDashboardWidgets({ tileIds: [tile.id], forceRefresh: true }),
+        applyWidgetIssueMetadataChange: (tileId, issueId, delta, context) =>
+            actions.applyWidgetIssueMetadataChange({ tileId, issueId, delta, context }),
+        updateWidgetTile: async (patch) => {
+            await actions.updateWidgetTile({ tile, ...patch })
+        },
+        tileErrorAsApiError: tile.error
+            ? new ApiError(undefined, 500, undefined, {
+                  detail: tile.error.message,
+                  code: 'dashboard_tile_error',
+              })
+            : undefined,
+    }
+}
 
 interface DashboardItemsProps {
     showCreateAnomalyAlertButton?: boolean
@@ -234,6 +333,52 @@ export function DashboardItems({ showCreateAnomalyAlertButton }: DashboardItemsP
             observer.disconnect()
         }
     }, [mounted, containerRef])
+    const dashboardId = dashboard?.id
+
+    // Cached by tile object so memoized tiles get stable callbacks: a tile refresh replaces only that tile's
+    // object, so every other tile skips re-rendering.
+    const getTileHandlers = useMemo(() => {
+        const cache = new WeakMap<DashboardTile<QueryBasedInsightModel>, TileHandlers>()
+        const actions: TileHandlerActions = {
+            moveToDashboard,
+            copyToDashboard,
+            removeTile,
+            duplicateTile,
+            toggleTileDescription,
+            updateTileColor,
+            refreshDashboardItem,
+            renameInsight,
+            setTileOverride,
+            push,
+            refreshDashboardWidgets,
+            applyWidgetIssueMetadataChange,
+            updateWidgetTile,
+        }
+        return (tile: DashboardTile<QueryBasedInsightModel>): TileHandlers => {
+            let handlers = cache.get(tile)
+            if (!handlers) {
+                handlers = buildTileHandlers(tile, dashboardId, actions)
+                cache.set(tile, handlers)
+            }
+            return handlers
+        }
+    }, [
+        dashboardId,
+        moveToDashboard,
+        copyToDashboard,
+        removeTile,
+        duplicateTile,
+        toggleTileDescription,
+        updateTileColor,
+        refreshDashboardItem,
+        renameInsight,
+        setTileOverride,
+        push,
+        refreshDashboardWidgets,
+        applyWidgetIssueMetadataChange,
+        updateWidgetTile,
+    ])
+
     const isMobileView = !!width && width <= BREAKPOINTS['sm']
     const isEditablePlacement = [
         DashboardPlacement.Dashboard,
@@ -346,16 +491,6 @@ export function DashboardItems({ showCreateAnomalyAlertButton }: DashboardItemsP
                   }
                 : undefined,
         [canEnterEditModeFromEdge, setDashboardMode]
-    )
-
-    const requireDashboardId = useCallback(
-        (action: string): number => {
-            if (!dashboard) {
-                throw new Error(`must be on a dashboard to ${action}`)
-            }
-            return dashboard.id
-        },
-        [dashboard]
     )
 
     const flushPendingLayouts = useCallback(() => {
@@ -524,20 +659,17 @@ export function DashboardItems({ showCreateAnomalyAlertButton }: DashboardItemsP
                                 return l.i == tile.id.toString()
                             })
 
+                            const handlers = getTileHandlers(tile)
                             const commonTileProps = {
-                                dashboardId: dashboard?.id,
+                                dashboardId,
                                 showResizeHandles,
                                 canEnterEditModeFromEdge,
                                 onEnterEditModeFromEdge,
                                 onDragHandleMouseDown,
                                 showEditingControls,
-                                moveToDashboard: ({ id, name }: Pick<DashboardType, 'id' | 'name'>) => {
-                                    moveToDashboard(tile, requireDashboardId('move this tile'), id, name)
-                                },
-                                copyToDashboard: ({ id, name }: Pick<DashboardType, 'id' | 'name'>) => {
-                                    copyToDashboard(tile, requireDashboardId('copy this tile'), id, name)
-                                },
-                                removeFromDashboard: () => removeTile(tile),
+                                moveToDashboard: handlers.moveToDashboard,
+                                copyToDashboard: handlers.copyToDashboard,
+                                removeFromDashboard: handlers.removeFromDashboard,
                             }
 
                             if (tile.error && !insight) {
@@ -563,10 +695,7 @@ export function DashboardItems({ showCreateAnomalyAlertButton }: DashboardItemsP
                                     isErrorTile || !!queryError || refreshStatus[insight.short_id]?.errored || false
                                 const refreshError = refreshStatus[insight.short_id]?.error
                                 const apiError = isErrorTile
-                                    ? new ApiError(undefined, 500, undefined, {
-                                          detail: tile.error!.message,
-                                          code: 'dashboard_tile_error',
-                                      })
+                                    ? handlers.tileErrorAsApiError
                                     : refreshError || queryError || undefined
                                 const loadingQueued = isErrorTile ? false : isRefreshingQueued(insight.short_id)
                                 const loading = isErrorTile ? false : isRefreshing(insight.short_id)
@@ -580,14 +709,16 @@ export function DashboardItems({ showCreateAnomalyAlertButton }: DashboardItemsP
                                         loading={loading}
                                         apiErrored={apiErrored}
                                         apiError={apiError}
-                                        highlighted={highlightedInsightId && insight.short_id === highlightedInsightId}
-                                        updateColor={(color) => updateTileColor(tile.id, color)}
-                                        toggleShowDescription={() => toggleTileDescription(tile.id)}
+                                        highlighted={
+                                            !!highlightedInsightId && insight.short_id === highlightedInsightId
+                                        }
+                                        updateColor={handlers.updateColor}
+                                        toggleShowDescription={handlers.toggleShowDescription}
                                         ribbonColor={tile.color}
-                                        refresh={() => refreshDashboardItem({ tile })}
-                                        rename={() => renameInsight(insight)}
-                                        duplicate={() => duplicateTile(tile)}
-                                        setOverride={() => setTileOverride(tile)}
+                                        refresh={handlers.refresh}
+                                        rename={handlers.rename}
+                                        duplicate={handlers.duplicate}
+                                        setOverride={handlers.setOverride}
                                         showDetailsControls={showDetailsControls}
                                         placement={placement}
                                         loadPriority={smLayout ? smLayout.y * 1000 + smLayout.x : undefined}
@@ -610,15 +741,11 @@ export function DashboardItems({ showCreateAnomalyAlertButton }: DashboardItemsP
                                         key={tile.id}
                                         tile={tile}
                                         placement={placement}
-                                        dashboardId={dashboard?.id}
-                                        onEdit={() => {
-                                            if (dashboard?.id) {
-                                                push(urls.dashboardTextTile(dashboard.id, tile.id))
-                                            }
-                                        }}
+                                        dashboardId={dashboardId}
+                                        onEdit={handlers.editTextTile}
                                         onMoveToDashboard={commonTileProps.moveToDashboard}
                                         onCopyToDashboard={commonTileProps.copyToDashboard}
-                                        onDuplicate={() => duplicateTile(tile)}
+                                        onDuplicate={handlers.duplicate}
                                         onRemove={commonTileProps.removeFromDashboard}
                                         showResizeHandles={commonTileProps.showResizeHandles}
                                         showEditingControls={commonTileProps.showEditingControls}
@@ -635,15 +762,11 @@ export function DashboardItems({ showCreateAnomalyAlertButton }: DashboardItemsP
                                         key={tile.id}
                                         tile={tile}
                                         placement={placement}
-                                        dashboardId={dashboard?.id}
+                                        dashboardId={dashboardId}
                                         isDraggingRef={isDragging}
-                                        onEdit={() => {
-                                            if (dashboard?.id) {
-                                                push(urls.dashboardButtonTile(dashboard.id, tile.id))
-                                            }
-                                        }}
+                                        onEdit={handlers.editButtonTile}
                                         onMoveToDashboard={commonTileProps.moveToDashboard}
-                                        onDuplicate={() => duplicateTile(tile)}
+                                        onDuplicate={handlers.duplicate}
                                         onRemove={commonTileProps.removeFromDashboard}
                                         showResizeHandles={commonTileProps.showResizeHandles}
                                         showEditingControls={commonTileProps.showEditingControls}
@@ -663,7 +786,7 @@ export function DashboardItems({ showCreateAnomalyAlertButton }: DashboardItemsP
                                         key={tile.id}
                                         tile={tile}
                                         placement={placement}
-                                        dashboardId={dashboard?.id}
+                                        dashboardId={dashboardId}
                                         canEditDashboard={canEditDashboard}
                                         isDashboardEditMode={dashboardMode === DashboardMode.Edit}
                                         result={runResult?.result}
@@ -672,23 +795,12 @@ export function DashboardItems({ showCreateAnomalyAlertButton }: DashboardItemsP
                                         )}
                                         loading={!!refreshState?.loading}
                                         lastFetchedAt={refreshState?.fetchedAt}
-                                        onRefresh={() =>
-                                            refreshDashboardWidgets({ tileIds: [tile.id], forceRefresh: true })
-                                        }
+                                        onRefresh={handlers.refreshWidget}
                                         onRefreshWidgetData={scheduleRefreshDashboardWidgets}
-                                        onApplyWidgetIssueMetadataChange={(tileId, issueId, delta, context) => {
-                                            applyWidgetIssueMetadataChange({
-                                                tileId,
-                                                issueId,
-                                                delta,
-                                                context,
-                                            })
-                                        }}
-                                        onUpdateWidgetTile={async (patch) => {
-                                            await updateWidgetTile({ tile, ...patch })
-                                        }}
-                                        toggleShowDescription={() => toggleTileDescription(tile.id)}
-                                        onDuplicate={() => duplicateTile(tile)}
+                                        onApplyWidgetIssueMetadataChange={handlers.applyWidgetIssueMetadataChange}
+                                        onUpdateWidgetTile={handlers.updateWidgetTile}
+                                        toggleShowDescription={handlers.toggleShowDescription}
+                                        onDuplicate={handlers.duplicate}
                                         onRemove={commonTileProps.removeFromDashboard}
                                         onMoveToDashboard={commonTileProps.moveToDashboard}
                                         onCopyToDashboard={commonTileProps.copyToDashboard}
