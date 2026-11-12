@@ -63,10 +63,10 @@ const ROOTS = [
     {
         root: 'src/scenes/AuthenticatedShell.tsx',
         label: 'authenticated shell (every logged-in page)',
-        // 2026-07-07: 8.02 MiB eager output after moving all @posthog/brand/hoggies usage in
-        // eager code to PNG stubs (lib/brand/hoggies) — the inline-SVG modules are now a
-        // forbidden module below. ~21% headroom so routine churn doesn't trip the warn.
-        budgetBytes: 10_185_000,
+        // 2026-11-12: 6.46 MiB eager output after moving dashboard widget previews, side panel
+        // tab contents, the compose-ticket modal and PostHog AI onboarding behind dynamic
+        // imports. ~20% headroom so routine churn doesn't trip the warn.
+        budgetBytes: 8_130_000,
         forbidden: [
             'node_modules/monaco-editor/',
             'src/lib/components/ActivityLog/describers',

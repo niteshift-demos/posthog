@@ -31,6 +31,10 @@ import {
 } from '~/queries/schema/schema-assistant-messages'
 import { RecordingUniversalFilters } from '~/types'
 
+// The client-side key for the embedded `taskTrackerSceneLogic` (and paired `runnerPanelLogic`) instance
+// this panel binds — stable so the panel keeps the same in-flight run across re-renders of its host.
+export const MAX_SIDE_PANEL_ID = 'max-side-panel'
+
 export interface EnhancedToolCall extends AssistantToolCall {
     status: TaskExecutionStatus
     isLastPlanningMessage?: boolean

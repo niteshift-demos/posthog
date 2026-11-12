@@ -46,19 +46,19 @@ Layer table, registry shapes, copy/move, analytics, and typing details: [`.agent
 
 Config shape has one SSOT; UI metadata stays hand-written.
 
-| Layer                      | Location                                                              | Hand-written?                                                                                  |
-| -------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Config contract (Pydantic) | `backend/widget_specs/configs.py`                                     | Yes — edit first                                                                               |
-| Runtime validation         | `backend/widget_specs/registry.py` (`validate_widget_config`)         | Derived                                                                                        |
-| Registry manifest          | `backend/widget_specs/registry.py` → `EXPECTED_WIDGET_TYPES`          | Per-type `WidgetSpec` entry                                                                    |
-| Agent catalog              | `backend/widget_catalog.py` (derived from `WIDGET_SPECS`)             | Labels in `registry.py`; `config_schema` = `model_json_schema()`                               |
-| OpenAPI config             | `backend/widget_specs/openapi.py`                                     | Stub DRF serializers + Pydantic `model_json_schema()` via `pydantic_openapi.py` postprocessing |
-| FE config Zod              | `frontend/generated/widget-configs.zod.ts` + `widget-config-schemas/` | Codegen — `hogli build:widget-types` (Orval `generateReusableSchemas`)                         |
-| FE config property keys    | `frontend/generated/widget-config-property-keys.json`                 | Codegen — `generate-widget-config-zod.mjs` (parity tests)                                      |
-| Widget date presets        | `frontend/generated/widget-date-from-options.json`                    | Codegen — `build-dashboard-widget-types.py` (`constants.py` values + labels)                   |
-| Widget form field picks    | `frontend/generated/widget-form-fields.json`                          | Codegen — `WidgetSpec.form_fields` in `registry.py`                                            |
-| FE UI catalog              | `frontend/widget_types/catalog.ts`                                    | Yes — layouts, previews, copy                                                                  |
-| FE runtime registry        | `frontend/widgets/registry.tsx`                                       | Yes — Component, EditModal                                                                     |
+| Layer                      | Location                                                              | Hand-written?                                                                                     |
+| -------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Config contract (Pydantic) | `backend/widget_specs/configs.py`                                     | Yes — edit first                                                                                  |
+| Runtime validation         | `backend/widget_specs/registry.py` (`validate_widget_config`)         | Derived                                                                                           |
+| Registry manifest          | `backend/widget_specs/registry.py` → `EXPECTED_WIDGET_TYPES`          | Per-type `WidgetSpec` entry                                                                       |
+| Agent catalog              | `backend/widget_catalog.py` (derived from `WIDGET_SPECS`)             | Labels in `registry.py`; `config_schema` = `model_json_schema()`                                  |
+| OpenAPI config             | `backend/widget_specs/openapi.py`                                     | Stub DRF serializers + Pydantic `model_json_schema()` via `pydantic_openapi.py` postprocessing    |
+| FE config Zod              | `frontend/generated/widget-configs.zod.ts` + `widget-config-schemas/` | Codegen — `hogli build:widget-types` (Orval `generateReusableSchemas`)                            |
+| FE config property keys    | `frontend/generated/widget-config-property-keys.json`                 | Codegen — `generate-widget-config-zod.mjs` (parity tests)                                         |
+| Widget date presets        | `frontend/generated/widget-date-from-options.json`                    | Codegen — `build-dashboard-widget-types.py` (`constants.py` values + labels)                      |
+| Widget form field picks    | `frontend/generated/widget-form-fields.json`                          | Codegen — `WidgetSpec.form_fields` in `registry.py`                                               |
+| FE UI catalog              | `frontend/widget_types/catalog.ts`                                    | Yes — layouts, copy (previews: `frontend/widget_types/previews.ts`, kept out of the eager bundle) |
+| FE runtime registry        | `frontend/widgets/registry.tsx`                                       | Yes — Component, EditModal                                                                        |
 
 See [config-and-codegen.md](../../.agents/skills/manage-dashboard-widgets/references/config-and-codegen.md).
 

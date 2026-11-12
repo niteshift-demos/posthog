@@ -17,12 +17,12 @@ import { ProductKey } from '~/queries/schema/schema-general'
 
 import {
     DASHBOARD_WIDGET_CATALOG_GROUPS,
-    DASHBOARD_WIDGET_PREVIEWS,
     type ResolvedDashboardWidgetCatalogEntry,
     type DashboardWidgetCatalogKey,
     getDashboardWidgetGroupIcon,
     getDashboardWidgetGroupProductIntro,
 } from '../widget_types/catalog'
+import { DASHBOARD_WIDGET_PREVIEWS } from '../widget_types/previews'
 import { isWidgetAvailabilityRequirementMet } from '../widget_types/widgetAvailability'
 import {
     type AddWidgetPayload,

@@ -1,15 +1,20 @@
 import { useValues } from 'kea'
+import { Suspense } from 'react'
 
 import { featureFlagLogic } from 'lib/logic/featureFlagLogic'
+import { lazyWithRetry } from 'lib/utils/retryImport'
 import { sceneLogic } from 'scenes/sceneLogic'
 
 import { sidePanelStateLogic } from '~/layout/navigation-3000/sidepanel/sidePanelStateLogic'
 
-import { AiOnboarding } from 'products/posthog_ai/frontend/api/onboarding'
-
+import { MAX_SIDE_PANEL_ID } from '../max-constants'
 import { maxGlobalLogic } from '../maxGlobalLogic'
 import { resolvePhaiOnboardingMounts } from './phaiOnboardingHost'
-import { MAX_SIDE_PANEL_ID } from './PhaiSidePanelChat'
+
+// Mounted on every logged-in page but only renders while a composer is on screen, so its UI loads on demand.
+const AiOnboarding = lazyWithRetry(() =>
+    import('products/posthog_ai/frontend/api/onboarding').then((m) => ({ default: m.AiOnboarding }))
+)
 
 /**
  * Mounts the PostHog AI onboarding takeover for whichever composers are on screen, and decides which of them
@@ -39,7 +44,7 @@ export function MaybePhaiOnboarding(): JSX.Element | null {
     }
 
     return (
-        <>
+        <Suspense fallback={null}>
             {mounts.map(({ host, autoOpen }) => (
                 // Both scenes run their composer under `taskTrackerSceneLogic`'s default `'scene'` key.
                 <AiOnboarding
@@ -48,6 +53,6 @@ export function MaybePhaiOnboarding(): JSX.Element | null {
                     panelId={host === 'side-panel' ? MAX_SIDE_PANEL_ID : undefined}
                 />
             ))}
-        </>
+        </Suspense>
     )
 }
