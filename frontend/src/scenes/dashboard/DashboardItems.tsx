@@ -98,6 +98,9 @@ interface TileHandlerActions extends Pick<
     updateWidgetTile: dashboardLogicType['asyncActions']['updateWidgetTile']
 }
 
+// The result is cached per tile object until dashboardId or an action changes, so these callbacks must capture
+// nothing else. Anything that can change while a tile keeps its identity (mode, permissions, filters, destination
+// dashboards) has to be read by the caller or by the logic's listener at call time, not closed over here.
 function buildTileHandlers(
     tile: DashboardTile<QueryBasedInsightModel>,
     dashboardId: number | undefined,
