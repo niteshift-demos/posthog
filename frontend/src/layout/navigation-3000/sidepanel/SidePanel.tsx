@@ -14,6 +14,26 @@ import { lazyWithRetry } from 'lib/utils/retryImport'
 const NotebookPanel = lazyWithRetry(() =>
     import('scenes/notebooks/NotebookPanel/NotebookPanel').then((m) => ({ default: m.NotebookPanel }))
 )
+// Panel contents load on first open, so the comments, support and activity UIs stay off the
+// app's initial bundle. Tab icons stay static imports because the panel navigation always renders them.
+const SidePanelSupport = lazyWithRetry(() =>
+    import('./panels/support/SidePanelSupport').then((m) => ({ default: m.SidePanelSupport }))
+)
+const SidePanelExports = lazyWithRetry(() =>
+    import('./panels/exports/SidePanelExports').then((m) => ({ default: m.SidePanelExports }))
+)
+const SidePanelActivity = lazyWithRetry(() =>
+    import('./panels/activity/SidePanelActivity').then((m) => ({ default: m.SidePanelActivity }))
+)
+const SidePanelDiscussion = lazyWithRetry(() =>
+    import('./panels/discussion/SidePanelDiscussion').then((m) => ({ default: m.SidePanelDiscussion }))
+)
+const SidePanelAccessControl = lazyWithRetry(() =>
+    import('./panels/access_control/SidePanelAccessControl').then((m) => ({ default: m.SidePanelAccessControl }))
+)
+const SidePanelAccessDetail = lazyWithRetry(() =>
+    import('./panels/access_control/SidePanelAccessDetail').then((m) => ({ default: m.SidePanelAccessDetail }))
+)
 
 import { useWindowSize } from 'lib/hooks/useWindowSize'
 
@@ -24,14 +44,11 @@ import { SidePanelTab } from '~/types'
 
 import { SidePanelSupportIcon } from 'products/conversations/frontend/components/SidePanel/SidePanelSupportIcon'
 
-import { SidePanelAccessControl } from './panels/access_control/SidePanelAccessControl'
-import { SidePanelAccessDetail } from './panels/access_control/SidePanelAccessDetail'
-import { SidePanelActivity, SidePanelActivityIcon } from './panels/activity/SidePanelActivity'
-import { SidePanelDiscussion, SidePanelDiscussionIcon } from './panels/discussion/SidePanelDiscussion'
-import { SidePanelExports, SidePanelExportsIcon } from './panels/exports/SidePanelExports'
+import { SidePanelActivityIcon } from './panels/activity/SidePanelActivityIcon'
+import { SidePanelDiscussionIcon } from './panels/discussion/SidePanelDiscussionIcon'
+import { SidePanelExportsIcon } from './panels/exports/SidePanelExportsIcon'
 import { SidePanelInfo, SidePanelInfoIcon } from './panels/info/SidePanelInfo'
 import { SidePanelMax } from './panels/max/SidePanelMax'
-import { SidePanelSupport } from './panels/support/SidePanelSupport'
 import { sidePanelLogic } from './sidePanelLogic'
 import { SidePanelNavigation } from './SidePanelNavigation'
 import { sidePanelStateLogic } from './sidePanelStateLogic'

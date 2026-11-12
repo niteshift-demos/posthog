@@ -51,7 +51,7 @@ import {
     PropertyDefinitionType,
 } from '~/types'
 
-import { ComposeTicketButton } from 'products/conversations/frontend/components/ComposeTicket'
+import { ComposeTicketButton } from 'products/conversations/frontend/components/ComposeTicket/ComposeTicketButton'
 import { FeedbackButton } from 'products/customer_analytics/frontend/components/FeedbackButton'
 
 import { MergeSplitPerson } from './MergeSplitPerson'

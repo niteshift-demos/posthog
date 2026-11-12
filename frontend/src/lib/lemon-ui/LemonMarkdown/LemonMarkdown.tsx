@@ -7,7 +7,7 @@ import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 
 import { CodeSnippet, getLanguage, Language } from 'lib/components/CodeSnippet'
-import { RichContentMention } from 'lib/components/RichContentEditor/RichContentNodeMention'
+import { RichContentMention } from 'lib/components/RichContentEditor/RichContentMention'
 import { LemonCheckbox } from 'lib/lemon-ui/LemonCheckbox'
 import { isTrustedPostHogUrl } from 'lib/utils/trustedUrl'
 
