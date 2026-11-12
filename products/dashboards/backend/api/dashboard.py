@@ -403,6 +403,16 @@ def tile_insight_prefetches() -> list[Prefetch]:
     ]
 
 
+def serializable_tiles_queryset(dashboard: Dashboard) -> QuerySet[DashboardTile]:
+    """Tiles of `dashboard` with everything DashboardTileSerializer reads already loaded.
+    Built from the model manager rather than `dashboard.tiles` so it never inherits
+    prefetch lookups from a `tiles` prefetch on the dashboard. InsightSerializer reads
+    `insight.dashboard_tiles` only for ids, so the tiles' dashboards aren't fetched."""
+    return DashboardTile.dashboard_queryset(DashboardTile.objects.filter(dashboard_id=dashboard.id)).prefetch_related(
+        *tile_insight_prefetches(), "insight__dashboard_tiles"
+    )
+
+
 def serialize_tile_with_context(tile, order: int, context: dict) -> tuple[int, dict]:
     """
     Serialize a single tile with error handling. Returns (order, tile_data) tuple.
@@ -2325,7 +2335,7 @@ class DashboardSerializer(DashboardMetadataSerializer):
 
         serialized_tiles: list[ReturnDict] = []
 
-        tiles = DashboardTile.dashboard_queryset(dashboard.tiles.all()).prefetch_related(*tile_insight_prefetches())
+        tiles = serializable_tiles_queryset(dashboard)
         self.user_permissions.set_preloaded_dashboard_tiles(list(tiles))
 
         team = self.context["get_team"]()
@@ -2580,7 +2590,9 @@ class DashboardsViewSet(
 
         queryset = queryset.prefetch_related("sharingconfiguration_set").select_related("created_by")
 
-        if self.action != "list":
+        # retrieve and stream_tiles serialize tiles from serializable_tiles_queryset, which queries
+        # them afresh, so prefetching them here would only run the same queries twice.
+        if self.action not in ("list", "retrieve", "stream_tiles"):
             tiles_prefetch_queryset = DashboardTile.dashboard_queryset(
                 DashboardTile.objects.prefetch_related(
                     Prefetch(
@@ -2699,7 +2711,7 @@ class DashboardsViewSet(
         )
 
         # Get tiles with proper prefetch
-        tiles = DashboardTile.dashboard_queryset(dashboard.tiles.all()).prefetch_related(*tile_insight_prefetches())
+        tiles = serializable_tiles_queryset(dashboard)
 
         layout_size = self._get_layout_size_from_request(request)
 
