@@ -15,6 +15,7 @@ from posthog.models.activity_logging.activity_log import ActivityLog
 
 from products.approvals.backend.exceptions import ApprovalRequired
 from products.approvals.backend.models import ApprovalPolicy, ChangeRequest
+from products.cohorts.backend.models.cohort import Cohort
 from products.feature_flags.backend.encrypted_flag_payloads import REDACTED_PAYLOAD_VALUE, flag_payload_codec
 from products.feature_flags.backend.facade.api import (
     _redact_unchanged_encrypted_payloads,
@@ -22,6 +23,7 @@ from products.feature_flags.backend.facade.api import (
     archive_flag,
     create_flag,
     flag_disable_requires_approval,
+    serialize_flags,
     set_flag_active,
     ship_variant,
     update_flag,
@@ -274,6 +276,31 @@ class TestFeatureFlagFacadeGatedWrites(APIBaseTest):
 
         flag.refresh_from_db()
         assert flag.active is True
+
+
+class TestSerializeFlags(APIBaseTest):
+    def test_resolves_cohort_names_across_the_project_including_deleted_cohorts(self):
+        live = Cohort.objects.create(team=self.team, name="live cohort")
+        deleted = Cohort.objects.create(team=self.team, name="deleted cohort", deleted=True)
+        cohort_properties = [
+            {"key": "id", "type": "cohort", "value": live.pk},
+            {"key": "id", "type": "cohort", "value": deleted.pk},
+        ]
+        flags = [
+            FeatureFlag.objects.create(
+                team=self.team,
+                created_by=self.user,
+                key=f"serialized-{i}",
+                filters={"groups": [{"properties": deepcopy(cohort_properties), "rollout_percentage": 100}]},
+            )
+            for i in range(2)
+        ]
+
+        serialized = serialize_flags(flags, context={"project_id": self.team.project_id})
+
+        for flag in serialized:
+            properties = flag["filters"]["groups"][0]["properties"]
+            assert [p["cohort_name"] for p in properties] == ["live cohort", "deleted cohort"]
 
 
 class TestRedactUnchangedEncryptedPayloads:
