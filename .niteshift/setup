@@ -51,6 +51,9 @@ uv sync
 echo "→ Installing JavaScript dependencies"
 pnpm install --frozen-lockfile --prefer-offline
 
+echo "→ Installing mobile workspace dependencies"
+bash .niteshift/files/setup-mobile
+
 echo "→ Installing Playwright's Chromium"
 pnpm exec playwright install chromium
 
