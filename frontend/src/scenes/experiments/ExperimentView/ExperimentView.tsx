@@ -5,12 +5,15 @@ import { LemonTab, LemonTabs } from '@posthog/lemon-ui'
 import { ActivityLog } from 'lib/components/ActivityLog/ActivityLog'
 import { FEATURE_FLAGS } from 'lib/constants'
 import { featureFlagLogic } from 'lib/logic/featureFlagLogic'
+import { userHasAccess } from 'lib/utils/accessControlUtils'
 import { PendingChangeRequestBanner } from 'scenes/approvals/PendingChangeRequestBanner'
 import { WebExperimentImplementationDetails } from 'scenes/experiments/WebExperimentImplementationDetails'
 
 import { SceneContent } from '~/layout/scenes/components/SceneContent'
 import { LegacyExperimentView } from '~/scenes/experiments/legacy'
-import { ActivityScope } from '~/types'
+import { AccessControlLevel, AccessControlResourceType, ActivityScope } from '~/types'
+
+import { ExperimentAnnotations } from 'products/experiments/frontend/annotations/ExperimentAnnotations'
 
 import { EmptyMetricsPanel } from '../ExperimentForm/MetricsPanel/EmptyMetricsPanel'
 import { ExperimentImplementationDetails } from '../ExperimentImplementationDetails'
@@ -44,8 +47,13 @@ import { ResultsNotificationBanner } from './ResultsNotificationBanner'
 import { SettingsTab } from './SettingsTab'
 
 const MetricsTab = (): JSX.Element => {
-    const { experiment, orderedPrimaryMetricsWithResults, orderedSecondaryMetricsWithResults, isExperimentLaunched } =
-        useValues(experimentLogic)
+    const {
+        experiment,
+        variants,
+        orderedPrimaryMetricsWithResults,
+        orderedSecondaryMetricsWithResults,
+        isExperimentLaunched,
+    } = useValues(experimentLogic)
     const { featureFlags } = useValues(featureFlagLogic)
 
     const hasMetrics = orderedPrimaryMetricsWithResults.length > 0 || orderedSecondaryMetricsWithResults.length > 0
@@ -73,6 +81,17 @@ const MetricsTab = (): JSX.Element => {
                     <Metrics isSecondary={false} />
                     <Metrics isSecondary={true} />
                 </>
+            )}
+            {typeof experiment.id === 'number' && (
+                <ExperimentAnnotations
+                    experimentId={experiment.id}
+                    variants={variants.map(({ key }) => key)}
+                    canEdit={userHasAccess(
+                        AccessControlResourceType.Experiment,
+                        AccessControlLevel.Editor,
+                        experiment.user_access_level
+                    )}
+                />
             )}
         </>
     )
