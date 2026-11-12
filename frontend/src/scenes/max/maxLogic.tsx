@@ -862,8 +862,10 @@ export const maxLogic = kea<maxLogicType>([
             handleCommandString(sidePanelStateLogic.values.selectedTabOptions, actions, values.effectivePhaiView)
         }
 
-        // Load conversation history on mount
-        actions.loadConversationHistory()
+        // maxGlobalLogic loads the history on its own mount; reuse that request instead of firing a duplicate
+        if (!values.conversationHistoryLoading) {
+            actions.loadConversationHistory()
+        }
     }),
 
     urlToAction(({ actions, values }) => ({

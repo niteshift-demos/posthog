@@ -37,7 +37,7 @@ from opentelemetry import trace
 from prometheus_client import Counter
 from rest_framework import exceptions, mixins, serializers, status, viewsets
 from rest_framework.exceptions import NotFound
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import SAFE_METHODS, AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from social_django.models import UserSocialAuth
@@ -151,6 +151,10 @@ REDIRECT_TO_SITE_FAILED_COUNTER = Counter("posthog_redirect_to_site_failed", "Re
 NUM_2FA_BACKUP_CODES = 10
 
 MAX_PIPELINE_NOTIFICATIONS = 1000
+
+# Reads of the user (every page load renders it) refresh the person properties at most this often.
+# Writes and switching organization or project always refresh them.
+USER_PROPERTIES_REFRESH_INTERVAL_SECONDS = 15 * 60
 _PIPELINE_ID_PATTERN = re.compile(r"^(?:hog_function|batch_export|plugin_config):[0-9a-zA-Z-]{1,128}$")
 
 
@@ -170,6 +174,16 @@ def _validate_pipeline_notifications(incoming: dict, merged: dict) -> None:
 
 logger = structlog.get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+
+
+def _should_refresh_user_properties(user: User, request: Any) -> bool:
+    if request is None or request.method not in SAFE_METHODS:
+        return True
+    cache_key = f"user_properties_refreshed:{user.pk}:{user.current_organization_id}:{user.current_team_id}"
+    try:
+        return bool(cache.add(cache_key, True, timeout=USER_PROPERTIES_REFRESH_INTERVAL_SECONDS))
+    except Exception:
+        return True
 
 
 class ScenePersonalisationBasicSerializer(serializers.ModelSerializer):
@@ -509,11 +523,16 @@ class UserSerializer(serializers.ModelSerializer):
         # "First user" == "didn't arrive via an invite". Direct signal (membership.invited_by IS NULL)
         # avoids the earliest-joined heuristic, which silently reassigns creator status if the
         # original creator leaves the org.
-        membership = (
-            OrganizationMembership.objects.filter(organization=organization, user=instance)
-            .only("invited_by_id")
-            .first()
-        )
+        user_permissions = self.context.get("user_permissions")
+        if isinstance(user_permissions, UserPermissions) and user_permissions.user.pk == instance.pk:
+            # Already loaded for the nested organization's membership_level
+            membership = user_permissions.organization_memberships.get(organization.id)
+        else:
+            membership = (
+                OrganizationMembership.objects.filter(organization=organization, user=instance)
+                .only("invited_by_id")
+                .first()
+            )
         if membership is None:
             return None
         return membership.invited_by_id is None
@@ -841,6 +860,17 @@ class UserSerializer(serializers.ModelSerializer):
 
         return instance
 
+    def _reload_user_permissions_loaded_before_serialization(self, instance: User) -> None:
+        # Several fields read memberships from the shared UserPermissions. Memberships it loaded before
+        # serialization started may predate a write in this request, so load them again instead.
+        user_permissions = self.context.get("user_permissions")
+        if (
+            isinstance(user_permissions, UserPermissions)
+            and user_permissions.user.pk == instance.pk
+            and user_permissions.has_loaded_organization_memberships
+        ):
+            self.context["user_permissions"] = user_permissions.reloaded()
+
     def to_representation(self, instance: Any) -> Any:
         # Refresh PostHog person properties so the dogfood instance keeps the user's
         # org/project/role properties current. posthoganalytics.capture is non-blocking
@@ -851,11 +881,15 @@ class UserSerializer(serializers.ModelSerializer):
         # working for clients running ad blockers, which a frontend-side identify would
         # silently miss.
         with tracer.start_as_current_span("user_serializer.identify"):
-            posthoganalytics.capture(
-                distinct_id=instance.distinct_id,
-                event="update user properties",
-                properties={"$set": instance.get_analytics_metadata()},
-            )
+            # get_analytics_metadata costs ~15 queries, so reads only pay for it once per refresh interval
+            if _should_refresh_user_properties(instance, self.context.get("request")):
+                posthoganalytics.capture(
+                    distinct_id=instance.distinct_id,
+                    event="update user properties",
+                    properties={"$set": instance.get_analytics_metadata()},
+                )
+
+        self._reload_user_permissions_loaded_before_serialization(instance)
 
         with tracer.start_as_current_span("user_serializer.default_fields"):
             data = super().to_representation(instance)

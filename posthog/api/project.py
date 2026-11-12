@@ -1327,7 +1327,7 @@ class ProjectViewSet(
 
     def safely_get_queryset(self, queryset):
         # IMPORTANT: This is actually what ensures that a user cannot read/update a project for which they don't have permission
-        visible_teams_ids = UserPermissions(cast(User, self.request.user)).team_ids_visible_for_user
+        visible_teams_ids = self._unpinned_user_permissions.team_ids_visible_for_user
         queryset = queryset.filter(id__in=visible_teams_ids)
         if scoped_organizations := get_authenticator_scoped_organization_ids(self.request.successful_authenticator):
             queryset = queryset.filter(organization_id__in=scoped_organizations)
@@ -1442,7 +1442,12 @@ class ProjectViewSet(
             scoped_organizations = get_authenticator_scoped_organization_ids(self.request.successful_authenticator)
             if scoped_organizations and str(team.organization_id) not in scoped_organizations:
                 raise exceptions.NotFound()
-            return team.project
+            project = team.project
+            if team.pk == project.pk and "passthrough_team" not in project.__dict__:
+                project.passthrough_team = team
+            if Team.organization.is_cached(team) and not Project.organization.is_cached(project):
+                Project.organization.field.set_cached_value(project, team.organization)
+            return project
 
         filter_kwargs = {self.lookup_field: lookup_value}
         try:
@@ -1454,8 +1459,7 @@ class ProjectViewSet(
     # :KLUDGE: Exposed for compatibility reasons for permission classes.
     @property
     def team(self):
-        project = self.get_object()
-        return project.teams.get(id=project.id)
+        return self.get_object().passthrough_team
 
     def perform_destroy(self, project: Project):
         from ee.billing.billing_manager import BillingManager
@@ -1910,10 +1914,16 @@ class ProjectViewSet(
         affected_users.exclude(id__in=member_user_ids).update(current_team=None, current_organization=None)
 
     @cached_property
+    def _unpinned_user_permissions(self) -> UserPermissions:
+        # get_object() runs several times per request (permissions, access control, serializer), and
+        # each run filters the queryset by the visible teams, so compute those once
+        return UserPermissions(cast(User, self.request.user))
+
+    @cached_property
     def user_permissions(self):
         project = self.get_object() if self.action in actions_that_require_current_team else None
         team = project.passthrough_team if project else None
-        return UserPermissions(cast(User, self.request.user), team)
+        return self._unpinned_user_permissions.for_team(team)
 
 
 class RootProjectViewSet(ProjectViewSet):

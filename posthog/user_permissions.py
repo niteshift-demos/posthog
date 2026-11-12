@@ -34,6 +34,34 @@ class UserPermissions:
         self._dashboard_permissions: dict[int, UserDashboardPermissions] = {}
         self._insight_permissions: dict[int, UserInsightPermissions] = {}
 
+    # Lookups that only depend on the user, so a copy pinned to another team can reuse them
+    _TEAM_INDEPENDENT_CACHED_PROPERTIES = (
+        "organization_memberships",
+        "organizations",
+        "dashboard_privileges",
+        "_prefetched_access_controls",
+        "_prefetched_role_ids_by_organization",
+        "teams_visible_for_user",
+        "team_ids_visible_for_user",
+        "project_ids_visible_for_user",
+    )
+
+    @property
+    def has_loaded_organization_memberships(self) -> bool:
+        return "organization_memberships" in self.__dict__
+
+    def reloaded(self) -> "UserPermissions":
+        """Return a UserPermissions for the same user and team that loads everything again on first use."""
+        return UserPermissions(self.user, self._current_team)
+
+    def for_team(self, team: Optional[Team]) -> "UserPermissions":
+        """Return a UserPermissions for the same user pinned to `team`, reusing lookups already made."""
+        pinned = UserPermissions(self.user, team)
+        for name in self._TEAM_INDEPENDENT_CACHED_PROPERTIES:
+            if name in self.__dict__:
+                pinned.__dict__[name] = self.__dict__[name]
+        return pinned
+
     @cached_property
     def current_team(self) -> "UserTeamPermissions":
         if self._current_team is None:

@@ -475,7 +475,17 @@ class User(AbstractUser, UUIDTClassicModel, ModelActivityMixin):  # type: ignore
             self.current_team = self.teams.filter(organization=self.current_organization).first()
             if self.current_team:
                 self.save(update_fields=["current_team"])
-        return self.current_team
+        team = self.current_team
+        if (
+            team is not None
+            and User.current_organization.is_cached(self)
+            and self.current_organization is not None
+            and team.organization_id == self.current_organization.pk
+            and not Team.organization.is_cached(team)
+        ):
+            # Most requests load both, so let team.organization reuse the row instead of fetching it again
+            Team.organization.field.set_cached_value(team, self.current_organization)
+        return team
 
     def get_github_login(self) -> str | None:
         """Resolve this user's GitHub login.
