@@ -42,7 +42,10 @@ def record_dashboard_access(access_method: DashboardAccessMethod) -> None:
 
 def record_dashboard_view(dashboard: Dashboard, access_method: DashboardAccessMethod) -> None:
     dashboard.last_accessed_at = now()
-    dashboard.save(update_fields=["last_accessed_at"])
+    # A queryset update skips save() side effects: loading the team and re-syncing the unchanged
+    # file system entry cost four queries on every dashboard view.
+    # nosemgrep: idor-lookup-without-team (the caller already loaded this dashboard through a team-scoped path)
+    Dashboard.objects_including_soft_deleted.filter(pk=dashboard.pk).update(last_accessed_at=dashboard.last_accessed_at)
     record_dashboard_access(access_method)
 
 
