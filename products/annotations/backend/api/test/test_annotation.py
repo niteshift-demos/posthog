@@ -6,8 +6,6 @@ from zoneinfo import ZoneInfo
 from posthog.test.base import APIBaseTest, FuzzyInt, QueryMatchingTest, snapshot_postgres_queries_context
 from unittest.mock import MagicMock, patch
 
-from django.utils.timezone import now
-
 from parameterized import parameterized
 from rest_framework import status
 
@@ -41,29 +39,40 @@ class TestAnnotation(APIBaseTest, QueryMatchingTest):
             response = self.client.get(f"/api/projects/{self.team.id}/annotations/").json()
             assert len(response["results"]) == 0
 
-        Annotation.objects.create(
-            organization=self.organization,
-            team=self.team,
-            created_at="2020-01-04T12:00:00Z",
-            created_by=User.objects.create_and_join(self.organization, "one", ""),
-            content=now().isoformat(),
-        )
+        for batch in range(1, 3):
+            self._create_annotation_of_every_parent_kind(suffix=str(batch))
 
-        with self.assertNumQueries(FuzzyInt(9, 10)), snapshot_postgres_queries_context(self):
-            response = self.client.get(f"/api/projects/{self.team.id}/annotations/").json()
-            assert len(response["results"]) == 1
+            with self.assertNumQueries(FuzzyInt(9, 10)), snapshot_postgres_queries_context(self):
+                response = self.client.get(f"/api/projects/{self.team.id}/annotations/").json()
+                assert len(response["results"]) == 3 * batch
 
-        Annotation.objects.create(
-            organization=self.organization,
-            team=self.team,
-            created_at="2020-01-04T12:00:00Z",
-            created_by=User.objects.create_and_join(self.organization, "two", ""),
-            content=now().isoformat(),
-        )
+        assert {r["dashboard_name"] for r in response["results"]} == {None, "dashboard 1", "dashboard 2"}
+        assert {r["insight_short_id"] for r in response["results"]} == {
+            None,
+            *Insight.objects.filter(team=self.team).values_list("short_id", flat=True),
+        }
 
-        with self.assertNumQueries(FuzzyInt(9, 10)), snapshot_postgres_queries_context(self):
-            response = self.client.get(f"/api/projects/{self.team.id}/annotations/").json()
-            assert len(response["results"]) == 2
+    def _create_annotation_of_every_parent_kind(self, suffix: str) -> None:
+        parents: list[dict[str, Any]] = [
+            {"scope": Annotation.Scope.PROJECT},
+            {
+                "scope": Annotation.Scope.DASHBOARD,
+                "dashboard": Dashboard.objects.create(team=self.team, name=f"dashboard {suffix}"),
+            },
+            {
+                "scope": Annotation.Scope.INSIGHT,
+                "dashboard_item": Insight.objects.create(team=self.team, name=f"insight {suffix}"),
+            },
+        ]
+        for index, parent in enumerate(parents):
+            Annotation.objects.create(
+                organization=self.organization,
+                team=self.team,
+                created_at="2020-01-04T12:00:00Z",
+                created_by=User.objects.create_and_join(self.organization, f"user-{suffix}-{index}@posthog.com", ""),
+                content=f"annotation {suffix}-{index}",
+                **parent,
+            )
 
     def test_org_scoped_annotations_are_returned_between_projects(self) -> None:
         second_team = Team.objects.create(organization=self.organization, name="Second team")
