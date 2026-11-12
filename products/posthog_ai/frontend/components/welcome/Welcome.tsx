@@ -22,7 +22,7 @@ export function Welcome({
     return (
         <>
             <div className="flex p-2">
-                <Logomark jumpOnClick size="lg" />
+                <Logomark jumpOnClick size="md" />
             </div>
             <div className="text-center mb-1">
                 <h2 className="text-xl @2xl/main-content:text-2xl font-bold mb-2 text-balance">{headline}</h2>
