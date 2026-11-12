@@ -30,7 +30,7 @@ from social_django.models import UserSocialAuth
 
 from posthog.api.email_verification import email_verification_token_generator
 from posthog.api.oauth.toolbar_service import ToolbarOAuthState, build_toolbar_oauth_state, new_state_nonce
-from posthog.api.user import UserSerializer
+from posthog.api.user import USER_PROPERTIES_REFRESH_INTERVAL_SECONDS, UserSerializer
 from posthog.constants import AvailableFeature
 from posthog.models import Team, User
 from posthog.models.instance_setting import set_instance_setting
@@ -148,6 +148,25 @@ class TestUserAPI(APIBaseTest):
                 },
             ],
         )
+
+    @patch("posthoganalytics.capture")
+    def test_me_reads_refresh_user_properties_once_per_interval_and_writes_always(self, mock_capture):
+        def identify_count() -> int:
+            return sum(1 for c in mock_capture.call_args_list if c.kwargs.get("event") == "update user properties")
+
+        start = timezone.now()
+        with freeze_time(start):
+            self.client.get("/api/users/@me/")
+            self.client.get("/api/users/@me/")
+            assert identify_count() == 1
+
+            response = self.client.patch("/api/users/@me/", {"first_name": "Changed"})
+            assert response.status_code == status.HTTP_200_OK
+            assert identify_count() == 2
+
+        with freeze_time(start + timedelta(seconds=USER_PROPERTIES_REFRESH_INTERVAL_SECONDS + 1)):
+            self.client.get("/api/users/@me/")
+            assert identify_count() == 3
 
     def test_me_membership_queries_do_not_scale_with_org_count(self):
         def me_membership_queries(user: User) -> tuple[int, dict]:
