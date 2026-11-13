@@ -110,9 +110,15 @@ export interface AnnotationApi {
      * * `USR` - user
      * * `GIT` - GitHub */
     creation_type?: CreationTypeEnumApi
-    /** @nullable */
+    /**
+     * Optional insight ID belonging to the current project.
+     * @nullable
+     */
     dashboard_item?: number | null
-    /** @nullable */
+    /**
+     * Optional dashboard ID belonging to the current project.
+     * @nullable
+     */
     dashboard_id?: number | null
     /** @nullable */
     readonly dashboard_name: string | null
@@ -176,9 +182,15 @@ export interface PatchedAnnotationApi {
      * * `USR` - user
      * * `GIT` - GitHub */
     creation_type?: CreationTypeEnumApi
-    /** @nullable */
+    /**
+     * Optional insight ID belonging to the current project.
+     * @nullable
+     */
     dashboard_item?: number | null
-    /** @nullable */
+    /**
+     * Optional dashboard ID belonging to the current project.
+     * @nullable
+     */
     dashboard_id?: number | null
     /** @nullable */
     readonly dashboard_name?: string | null
@@ -215,7 +227,58 @@ export interface PatchedAnnotationApi {
     hidden_in_user_interface?: boolean | null
 }
 
+export interface AnnotationScopeCountsApi {
+    /** Matching project annotations. */
+    project: number
+    /** Matching organization annotations. */
+    organization: number
+    /** Matching dashboard annotations. */
+    dashboard: number
+    /** Matching insight annotations. */
+    dashboard_item: number
+    /** Matching legacy recording annotations. */
+    recording: number
+}
+
+export interface AnnotationDailyCountApi {
+    /** UTC calendar date of the annotations. */
+    date: string
+    /** Matching annotations on this UTC date. */
+    count: number
+}
+
+export interface AnnotationSummaryApi {
+    /** Total matching annotations before pagination, including undated notes. */
+    total: number
+    /** Matching counts by scope, including scopes with no matches. */
+    scope_counts: AnnotationScopeCountsApi
+    /** Populated UTC dates in ascending order. Annotations without a date are excluded. */
+    daily_counts: AnnotationDailyCountApi[]
+}
+
 export type AnnotationsListParams = {
+    /**
+     * Filter by associated dashboard ID.
+     * @minimum 1
+     */
+    dashboard_id?: number
+    /**
+     * Filter by associated insight ID.
+     * @minimum 1
+     */
+    dashboard_item?: number
+    /**
+     * Inclusive start of the annotation date range.
+     */
+    date_from?: string
+    /**
+     * Inclusive end of the annotation date range.
+     */
+    date_to?: string
+    /**
+     * Set false to include only annotations visible in the UI. Omit to include hidden annotations too.
+     */
+    hidden_in_user_interface?: boolean
     /**
      * Number of results to return per page.
      */
@@ -225,7 +288,44 @@ export type AnnotationsListParams = {
      */
     offset?: number
     /**
-     * A search term.
+     * Filter by annotation scope. 'insight' is an alias for 'dashboard_item'.
+     */
+    scope?: string
+    /**
+     * Search annotation content.
+     */
+    search?: string
+}
+
+export type AnnotationsSummaryRetrieveParams = {
+    /**
+     * Filter by associated dashboard ID.
+     * @minimum 1
+     */
+    dashboard_id?: number
+    /**
+     * Filter by associated insight ID.
+     * @minimum 1
+     */
+    dashboard_item?: number
+    /**
+     * Inclusive start of the annotation date range.
+     */
+    date_from?: string
+    /**
+     * Inclusive end of the annotation date range.
+     */
+    date_to?: string
+    /**
+     * Set false to include only annotations visible in the UI. Omit to include hidden annotations too.
+     */
+    hidden_in_user_interface?: boolean
+    /**
+     * Filter by annotation scope. 'insight' is an alias for 'dashboard_item'.
+     */
+    scope?: string
+    /**
+     * Search annotation content.
      */
     search?: string
 }

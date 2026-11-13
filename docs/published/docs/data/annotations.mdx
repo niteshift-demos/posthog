@@ -1,0 +1,44 @@
+---
+title: Annotations
+sidebar: Docs
+showTitle: true
+---
+
+Annotations mark releases, incidents, experiments, and other events on your charts. They provide context for your data; an annotation does not establish why a metric changed.
+
+## Finding annotations
+
+Open **Annotations** to use the annotation explorer. Search annotation text, choose a date range in UTC, and filter by scope or an associated dashboard or insight. Filters combine, so selecting a dashboard and a search term shows only matching annotations attached to that dashboard.
+
+The matching total and scope counts cover all matching annotations, including results on other pages. The table and timeline use the same filters. Switch to **Timeline** to browse annotations by day, or use **Table** to compare their details. Annotations without a date appear separately from dated annotations.
+
+Follow an associated dashboard or insight link to open that resource. Project annotations apply across the project; organization annotations apply across projects in the organization.
+
+Filters and the selected view are saved in the URL. Copy the URL to share a view with someone who has access to the project. Refreshing the page and using your browser's back and forward buttons preserve that view. If no annotations match, adjust the filters or clear them to start again.
+
+## Visibility
+
+The explorer excludes deleted annotations, annotations attached to deleted dashboards or insights, and annotations marked as hidden in the user interface. Organization annotations remain visible across projects in their organization. Sharing a filtered URL does not grant access to a project.
+
+## Filtering through the API
+
+Use `GET /api/projects/{project_id}/annotations/` to retrieve a page of annotations. Use `GET /api/projects/{project_id}/annotations/summary/` for counts across all matching annotations.
+
+Both endpoints accept these filters:
+
+| Parameter                  | Description                                                                                                 |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `search`                   | Search annotation content using the existing annotation search syntax.                                      |
+| `date_from`, `date_to`     | Inclusive ISO 8601 bounds on the annotation timestamp. Bounds without a time zone use UTC.                  |
+| `scope`                    | `project`, `organization`, `dashboard`, or `dashboard_item`. `insight` is an alias for `dashboard_item`.    |
+| `dashboard_id`             | Match annotations attached to this numeric dashboard ID.                                                    |
+| `dashboard_item`           | Match annotations attached to this numeric insight ID.                                                      |
+| `hidden_in_user_interface` | Set to `false` to match the explorer's visibility rules. Omit to include hidden annotations in API results. |
+
+The list endpoint accepts `limit` and `offset` for pagination. Resource filters use positive integer IDs and combine with other filters. Filtering by a dashboard matches annotations attached directly to that dashboard; it does not include all project annotations or annotations on its individual insights.
+
+The retired `is_emoji` parameter is ignored. It does not filter annotations by the newer `emoji` decoration field.
+
+The summary returns `total`, `scope_counts`, and `daily_counts`. Scope counts include zeroes for scopes with no matches. Daily counts contain `{ "date": "YYYY-MM-DD", "count": 1 }` entries for days with matching annotations, ordered from oldest to newest in UTC. Annotations without a timestamp contribute to totals and scope counts, but not daily counts. Pagination does not limit the summary.
+
+List and summary requests apply the same project, organization, and deletion rules. Counts describe the annotations visible to the caller, not annotations in other organizations.

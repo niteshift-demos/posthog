@@ -1,6 +1,32 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "properties": {
+        "dashboard_id": {
+            "description": "Filter by associated dashboard ID.",
+            "minimum": 1,
+            "type": "number"
+        },
+        "dashboard_item": {
+            "description": "Filter by associated insight ID.",
+            "minimum": 1,
+            "type": "number"
+        },
+        "date_from": {
+            "description": "Inclusive start of the annotation date range.",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "type": "string"
+        },
+        "date_to": {
+            "description": "Inclusive end of the annotation date range.",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "type": "string"
+        },
+        "hidden_in_user_interface": {
+            "description": "Set false to include only annotations visible in the UI. Omit to include hidden annotations too.",
+            "type": "boolean"
+        },
         "limit": {
             "default": 100,
             "description": "Number of annotations to return per page (default 100).",
@@ -10,8 +36,12 @@
             "description": "The initial index from which to return the results.",
             "type": "number"
         },
+        "scope": {
+            "description": "Filter by annotation scope. 'insight' is an alias for 'dashboard_item'.",
+            "type": "string"
+        },
         "search": {
-            "description": "A search term.",
+            "description": "Search annotation content.",
             "type": "string"
         }
     },

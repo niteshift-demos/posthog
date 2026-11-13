@@ -10,7 +10,9 @@ import { apiMutator } from '../../../../frontend/src/lib/api-orval-mutator'
  */
 import type {
     AnnotationApi,
+    AnnotationSummaryApi,
     AnnotationsListParams,
+    AnnotationsSummaryRetrieveParams,
     PaginatedAnnotationListApi,
     PatchedAnnotationApi,
 } from './api.schemas'
@@ -153,5 +155,35 @@ export const annotationsDestroy = async (projectId: string, id: number, options?
     return apiMutator<unknown>(getAnnotationsDestroyUrl(projectId, id), {
         ...options,
         method: 'DELETE',
+    })
+}
+
+export const getAnnotationsSummaryRetrieveUrl = (projectId: string, params?: AnnotationsSummaryRetrieveParams) => {
+    const normalizedParams = new URLSearchParams()
+
+    Object.entries(params || {}).forEach(([key, value]) => {
+        if (value !== undefined) {
+            normalizedParams.append(key, value === null ? 'null' : String(value))
+        }
+    })
+
+    const stringifiedParams = normalizedParams.toString()
+
+    return stringifiedParams.length > 0
+        ? `/api/projects/${projectId}/annotations/summary/?${stringifiedParams}`
+        : `/api/projects/${projectId}/annotations/summary/`
+}
+
+/**
+ * Create, Read, Update and Delete annotations. [See docs](https://posthog.com/docs/data/annotations) for more information on annotations.
+ */
+export const annotationsSummaryRetrieve = async (
+    projectId: string,
+    params?: AnnotationsSummaryRetrieveParams,
+    options?: RequestInit
+): Promise<AnnotationSummaryApi> => {
+    return apiMutator<AnnotationSummaryApi>(getAnnotationsSummaryRetrieveUrl(projectId, params), {
+        ...options,
+        method: 'GET',
     })
 }
